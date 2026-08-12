@@ -1,0 +1,90 @@
+name: 错误报告
+description: 报告可以稳定复现的转换错误、界面问题或数据问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你报告问题。提交前请先搜索现有 Issue，并确认正在使用最新版本。
+
+        如需提供待转换文本，请先删除其中的个人信息、账号、密钥和其他敏感内容。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 请清楚说明发生了什么，以及问题出现在哪个操作环节。
+      placeholder: 点击转换、恢复历史记录或修改设置后出现了什么问题？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 请按顺序列出能够稳定触发问题的步骤。
+      placeholder: |
+        1. 打开……
+        2. 输入……
+        3. 点击……
+        4. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: sample
+    attributes:
+      label: 原始文本、预期结果与实际结果
+      description: 转换问题请提供最小复现文本，并注明当时的“排除 Markdown 代码”和“启发式判断”设置。
+      placeholder: |
+        原始文本：
+        预期结果：
+        实际结果：
+        排除 Markdown 代码：开启 / 关闭
+        启发式判断：开启 / 关闭
+      render: text
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows
+        - Android
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 可在“设置 > 关于 > 版本”中查看。
+      placeholder: 例如 0.0.1+1
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 系统环境
+      description: 请提供系统版本、设备型号或其他可能相关的信息。
+      placeholder: 例如 Windows 11 25H2 / Android 16，设备型号……
+
+  - type: textarea
+    id: media
+    attributes:
+      label: 截图、录屏或日志
+      description: 如有需要，可将文件直接拖到此处。请先检查并移除敏感信息。
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索现有 Issue，未发现相同问题。
+          required: true
+        - label: 我已从示例、截图和日志中移除敏感信息。
+          required: true
