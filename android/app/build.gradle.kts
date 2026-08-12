@@ -1,7 +1,35 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val releaseSigningPropertiesFile = rootProject.file("key.properties")
+val releaseSigningProperties = Properties()
+if (releaseSigningPropertiesFile.exists()) {
+    FileInputStream(releaseSigningPropertiesFile).use {
+        releaseSigningProperties.load(it)
+    }
+}
+
+val releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+val requiredReleaseSigningProperties =
+    listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
+val missingReleaseSigningProperties = requiredReleaseSigningProperties.filter {
+    releaseSigningProperties.getProperty(it).isNullOrBlank()
+}
+
+if (releaseBuildRequested && missingReleaseSigningProperties.isNotEmpty()) {
+    throw GradleException(
+        "Android release signing is not configured. Missing properties " +
+            "${missingReleaseSigningProperties.joinToString()} in " +
+            releaseSigningPropertiesFile.absolutePath,
+    )
 }
 
 android {
@@ -24,11 +52,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (missingReleaseSigningProperties.isEmpty()) {
+            create("release") {
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+                storeFile = file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (missingReleaseSigningProperties.isEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

@@ -1,0 +1,6 @@
+# Copy this file to key.properties and fill in the local release credentials.
+# Never commit key.properties or the keystore itself.
+storePassword=replace-with-keystore-password
+keyPassword=replace-with-key-password
+keyAlias=jo_quote_converter
+storeFile=C:/absolute/path/to/jo-quote-converter-release.p12
