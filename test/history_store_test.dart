@@ -102,6 +102,95 @@ void main() {
     expect(restored.single.createdAt, first.createdAt);
   });
 
+  test('clears all entries and remains empty after reopening', () async {
+    final store = createStore();
+    await store.add(
+      ConversionHistoryEntry(
+        input: 'first input',
+        output: 'first output',
+        createdAt: DateTime(2026, 8, 12, 10),
+      ),
+    );
+    await store.add(
+      ConversionHistoryEntry(
+        input: 'second input',
+        output: 'second output',
+        createdAt: DateTime(2026, 8, 12, 11),
+      ),
+    );
+
+    await store.clear();
+    expect(await store.load(), isEmpty);
+
+    await store.close();
+    expect(await createStore().load(), isEmpty);
+  });
+
+  test('merges new entries and skips exact duplicates', () async {
+    final store = createStore();
+    final existing = ConversionHistoryEntry(
+      input: 'same input',
+      output: 'same output',
+      createdAt: DateTime(2026, 8, 12, 10),
+    );
+    final newEntry = ConversionHistoryEntry(
+      input: 'new input',
+      output: 'new output',
+      createdAt: DateTime(2026, 8, 12, 11),
+    );
+    await store.add(existing);
+
+    final inserted = await store.merge([existing, existing, newEntry]);
+    final restored = await store.load();
+
+    expect(inserted, 1);
+    expect(restored, hasLength(2));
+    expect(restored.first.input, 'new input');
+  });
+
+  test('replaces every history entry in one operation', () async {
+    final store = createStore();
+    await store.add(
+      ConversionHistoryEntry(
+        input: 'old input',
+        output: 'old output',
+        createdAt: DateTime(2026, 8, 12, 10),
+      ),
+    );
+    final replacements = [
+      ConversionHistoryEntry(
+        input: 'replacement one',
+        output: 'replacement output one',
+        createdAt: DateTime(2026, 8, 12, 11),
+      ),
+      ConversionHistoryEntry(
+        input: 'replacement two',
+        output: 'replacement output two',
+        createdAt: DateTime(2026, 8, 12, 12),
+      ),
+    ];
+
+    await store.replaceAll(replacements);
+    final restored = await store.load();
+
+    expect(restored, hasLength(2));
+    expect(restored.first.input, 'replacement two');
+    expect(restored.last.input, 'replacement one');
+  });
+
+  test('reports the SQLite storage size', () async {
+    final store = createStore();
+    await store.add(
+      ConversionHistoryEntry(
+        input: 'size input',
+        output: 'size output',
+        createdAt: DateTime(2026, 8, 13, 10),
+      ),
+    );
+
+    expect(await store.storageSizeBytes(), greaterThan(0));
+  });
+
   test('merges a previous Windows database only once', () async {
     final previousStore = HistoryStore(
       databaseFactory: databaseFactoryFfi,

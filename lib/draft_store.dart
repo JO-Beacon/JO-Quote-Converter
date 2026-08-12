@@ -21,6 +21,8 @@ class DraftStore {
   static const _useHeuristicsKey = 'draft.useHeuristics';
   static const _themeModeKey = 'settings.themeMode';
   static const _paletteKey = 'settings.palette';
+  static const _keyboardShortcutsEnabledKey =
+      'settings.keyboardShortcutsEnabled';
 
   final Future<SharedPreferences> _preferences =
       SharedPreferences.getInstance();
@@ -64,5 +66,27 @@ class DraftStore {
   Future<void> savePalette(String palette) async {
     final preferences = await _preferences;
     await preferences.setString(_paletteKey, palette);
+  }
+
+  Future<bool> loadKeyboardShortcutsEnabled() async {
+    final preferences = await _preferences;
+    return preferences.getBool(_keyboardShortcutsEnabledKey) ?? true;
+  }
+
+  Future<void> saveKeyboardShortcutsEnabled(bool enabled) async {
+    final preferences = await _preferences;
+    await preferences.setBool(_keyboardShortcutsEnabledKey, enabled);
+  }
+
+  Future<void> saveArchiveState({
+    required SavedDraft draft,
+    required String themeMode,
+    required String palette,
+    required bool keyboardShortcutsEnabled,
+  }) async {
+    await save(draft);
+    await saveThemeMode(themeMode);
+    await savePalette(palette);
+    await saveKeyboardShortcutsEnabled(keyboardShortcutsEnabled);
   }
 }

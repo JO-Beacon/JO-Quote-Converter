@@ -111,6 +111,77 @@ class HistoryStore {
     }
   }
 
+  Future<void> clear() async {
+    final database = await _getDatabase();
+    await database.delete(_historyTable);
+  }
+
+  Future<int> merge(List<ConversionHistoryEntry> entries) async {
+    final database = await _getDatabase();
+    return database.transaction<int>((transaction) async {
+      final rows = await transaction.query(
+        _historyTable,
+        columns: const ['input', 'output', 'created_at'],
+      );
+      final existing = rows
+          .map(
+            (row) => (
+              row['input'] as String,
+              row['output'] as String,
+              row['created_at'] as int,
+            ),
+          )
+          .toSet();
+      var inserted = 0;
+      for (final entry in entries) {
+        final identity = (
+          entry.input,
+          entry.output,
+          entry.createdAt.millisecondsSinceEpoch,
+        );
+        if (!existing.add(identity)) continue;
+        await transaction.insert(_historyTable, {
+          'input': entry.input,
+          'output': entry.output,
+          'created_at': entry.createdAt.millisecondsSinceEpoch,
+        });
+        inserted++;
+      }
+      return inserted;
+    });
+  }
+
+  Future<void> replaceAll(List<ConversionHistoryEntry> entries) async {
+    final database = await _getDatabase();
+    await database.transaction((transaction) async {
+      await transaction.delete(_historyTable);
+      for (final entry in entries) {
+        await transaction.insert(_historyTable, {
+          'input': entry.input,
+          'output': entry.output,
+          'created_at': entry.createdAt.millisecondsSinceEpoch,
+        });
+      }
+    });
+  }
+
+  Future<int> storageSizeBytes() async {
+    final database = await _getDatabase();
+    final databases = await database.rawQuery('PRAGMA database_list');
+    final databasePath = databases
+        .map((row) => row['file'])
+        .whereType<String>()
+        .firstWhere((path) => path.isNotEmpty, orElse: () => '');
+    if (databasePath.isEmpty) return 0;
+
+    var total = 0;
+    for (final suffix in const ['', '-wal', '-shm']) {
+      final file = File('$databasePath$suffix');
+      if (await file.exists()) total += await file.length();
+    }
+    return total;
+  }
+
   Future<void> close() async {
     final database = await _database;
     _database = null;
