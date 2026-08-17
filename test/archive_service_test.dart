@@ -193,6 +193,44 @@ void main() {
     );
   });
 
+  test('decodes a Windows-associated archive file path', () async {
+    final archiveFile = File(
+      '${temporaryDirectory.path}${Platform.pathSeparator}'
+      'associated.$archiveExtension',
+    );
+    await archiveFile.writeAsBytes(
+      service.encode(snapshot: _snapshot(), appVersion: '0.0.3+3'),
+    );
+
+    final document = await service.decodeFilePath(archiveFile.path);
+
+    expect(document.appVersion, '0.0.3+3');
+    expect(document.snapshot.history, hasLength(2));
+  });
+
+  test(
+    'rejects a Windows-associated file path with a wrong extension',
+    () async {
+      final archiveFile = File(
+        '${temporaryDirectory.path}${Platform.pathSeparator}not-an-archive.zip',
+      );
+      await archiveFile.writeAsBytes(
+        service.encode(snapshot: _snapshot(), appVersion: '0.0.3+3'),
+      );
+
+      expect(
+        () => service.decodeFilePath(archiveFile.path),
+        throwsA(
+          isA<ArchiveFormatException>().having(
+            (error) => error.message,
+            'message',
+            '请选择 .joquoteconverter 存档文件。',
+          ),
+        ),
+      );
+    },
+  );
+
   test('rejects invalid Android archive content after selection', () async {
     final invalidFile = File(
       '${temporaryDirectory.path}${Platform.pathSeparator}android-cache-file',
@@ -274,11 +312,12 @@ void main() {
   );
 
   test('lists valid and damaged automatic backups newest first', () async {
-    await service.createAutomaticBackup(
+    final validBackupPath = await service.createAutomaticBackup(
       snapshot: _snapshot(),
       appVersion: '0.0.2+2',
       now: DateTime(2026, 8, 13, 10),
     );
+    await File(validBackupPath).setLastModified(DateTime(2026, 8, 13, 10));
     final backupDirectory = Directory(
       '${temporaryDirectory.path}${Platform.pathSeparator}backups',
     );

@@ -388,6 +388,13 @@ class ArchiveService {
     return decode(await file.readAsBytes());
   }
 
+  Future<ArchiveDocument> decodeFilePath(String path) async {
+    if (!_hasArchiveExtension(path)) {
+      throw const ArchiveFormatException('请选择 .joquoteconverter 存档文件。');
+    }
+    return decode(await File(path).readAsBytes());
+  }
+
   Future<String> createAutomaticBackup({
     required ArchiveSnapshot snapshot,
     required String appVersion,

@@ -5,7 +5,7 @@
 ## 1. 项目事实
 
 - 项目名称：JO-引号转换。
-- 当前版本：`0.0.2+2`。
+- 当前版本：`0.0.3+3`。
 - 作者：GitHub 用户 `JO-Beacon`。
 - 技术栈：Flutter / Dart。
 - 当前维护平台：Windows、Android。

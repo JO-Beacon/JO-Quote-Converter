@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,7 +13,7 @@ import 'history_store.dart';
 import 'quote_converter.dart';
 import 'windows_data_migrator.dart';
 
-const appVersion = '0.0.2+2';
+const appVersion = '0.0.3+3';
 const appAuthor = 'JO-Beacon';
 final appAuthorUrl = Uri.parse('https://github.com/JO-Beacon/');
 
@@ -37,14 +39,24 @@ extension AppPaletteStyle on AppPalette {
   };
 }
 
-Future<void> main() async {
+Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await migratePreviousWindowsPreferences();
   } catch (_) {
     // Migration failure must not prevent the editor from opening.
   }
-  runApp(const QuoteConverterApp());
+  runApp(QuoteConverterApp(startupArchivePath: _startupArchivePath(arguments)));
+}
+
+String? _startupArchivePath(Iterable<String> arguments) {
+  if (!Platform.isWindows) return null;
+  for (final argument in arguments) {
+    if (argument.toLowerCase().endsWith('.$archiveExtension')) {
+      return argument;
+    }
+  }
+  return null;
 }
 
 class QuoteConverterApp extends StatefulWidget {
@@ -53,11 +65,13 @@ class QuoteConverterApp extends StatefulWidget {
     this.historyStore,
     this.archiveService,
     this.draftStore,
+    this.startupArchivePath,
   });
 
   final HistoryStore? historyStore;
   final ArchiveService? archiveService;
   final DraftStore? draftStore;
+  final String? startupArchivePath;
 
   @override
   State<QuoteConverterApp> createState() => _QuoteConverterAppState();
@@ -120,6 +134,9 @@ class _QuoteConverterAppState extends State<QuoteConverterApp> {
     return MaterialApp(
       title: 'JO-引号转换',
       debugShowCheckedModeBanner: false,
+      locale: const Locale('zh', 'CN'),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('zh', 'CN')],
       theme: _buildAppTheme(Brightness.light, _palette),
       darkTheme: _buildAppTheme(Brightness.dark, _palette),
       themeMode: _themeMode,
@@ -131,6 +148,7 @@ class _QuoteConverterAppState extends State<QuoteConverterApp> {
         palette: _palette,
         onThemeModeChanged: _changeThemeMode,
         onPaletteChanged: _changePalette,
+        startupArchivePath: widget.startupArchivePath,
       ),
     );
   }
@@ -201,6 +219,7 @@ class ConverterPage extends StatefulWidget {
     required this.palette,
     required this.onThemeModeChanged,
     required this.onPaletteChanged,
+    this.startupArchivePath,
   });
 
   final HistoryStore? historyStore;
@@ -210,6 +229,7 @@ class ConverterPage extends StatefulWidget {
   final AppPalette palette;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<AppPalette> onPaletteChanged;
+  final String? startupArchivePath;
 
   @override
   State<ConverterPage> createState() => _ConverterPageState();
@@ -301,6 +321,29 @@ class _ConverterPageState extends State<ConverterPage> {
     _outputController.addListener(_handleTextChanged);
     _listenersAttached = true;
     setState(() => _isRestoringDraft = false);
+    final startupArchivePath = widget.startupArchivePath;
+    if (startupArchivePath != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => unawaited(_importStartupArchive(startupArchivePath)),
+      );
+    }
+  }
+
+  Future<void> _importStartupArchive(String path) async {
+    try {
+      final document = await _archiveService.decodeFilePath(path);
+      if (!mounted) return;
+      final selection = await showDialog<ArchiveImportSelection>(
+        context: context,
+        builder: (context) => _ArchiveImportDialog(document: document),
+      );
+      if (selection == null || !mounted) return;
+      await _importArchive(document, selection);
+    } on ArchiveFormatException catch (error) {
+      if (mounted) _showMessage(error.message);
+    } catch (_) {
+      if (mounted) _showMessage('存档读取失败');
+    }
   }
 
   void _handleTextChanged() {
@@ -544,11 +587,7 @@ class _ConverterPageState extends State<ConverterPage> {
           onClearAutomaticBackups: _archiveService.clearAutomaticBackups,
           onRestoreAutomaticBackup: (backup) => _importArchive(
             backup.document!,
-            const ArchiveImportSelection(
-              overwriteWorkspace: true,
-              overwriteSettings: true,
-              historyMode: ArchiveHistoryImportMode.overwrite,
-            ),
+            const ArchiveImportSelection(ArchiveImportMode.overwrite),
             successMessage: '自动备份已恢复',
           ),
         ),
@@ -611,34 +650,35 @@ class _ConverterPageState extends State<ConverterPage> {
         appVersion: appVersion,
       );
 
-      switch (selection.historyMode) {
-        case ArchiveHistoryImportMode.skip:
-          break;
-        case ArchiveHistoryImportMode.merge:
-          await _historyStore.merge(document.snapshot.history);
-        case ArchiveHistoryImportMode.overwrite:
-          await _historyStore.replaceAll(document.snapshot.history);
+      if (selection.isOverwrite) {
+        await _historyStore.replaceAll(document.snapshot.history);
+      } else {
+        await _historyStore.merge(document.snapshot.history);
       }
 
-      final nextDraft = selection.overwriteWorkspace
+      final workspaceIsEmpty =
+          previousSnapshot.draft.input.trim().isEmpty &&
+          previousSnapshot.draft.output.trim().isEmpty;
+      final shouldRestoreWorkspace = selection.isOverwrite || workspaceIsEmpty;
+      final nextDraft = shouldRestoreWorkspace
           ? document.snapshot.draft
           : previousSnapshot.draft;
-      final nextThemeMode = selection.overwriteSettings
+      final nextThemeMode = selection.isOverwrite
           ? document.snapshot.themeMode
           : previousSnapshot.themeMode;
-      final nextPalette = selection.overwriteSettings
+      final nextPalette = selection.isOverwrite
           ? document.snapshot.palette
           : previousSnapshot.palette;
-      final nextKeyboardShortcutsEnabled = selection.overwriteSettings
+      final nextKeyboardShortcutsEnabled = selection.isOverwrite
           ? document.snapshot.keyboardShortcutsEnabled
           : previousSnapshot.keyboardShortcutsEnabled;
       final nextBehaviorDraft = SavedDraft(
         input: nextDraft.input,
         output: nextDraft.output,
-        excludeMarkdownCode: selection.overwriteSettings
+        excludeMarkdownCode: selection.isOverwrite
             ? document.snapshot.draft.excludeMarkdownCode
             : previousSnapshot.draft.excludeMarkdownCode,
-        useHeuristics: selection.overwriteSettings
+        useHeuristics: selection.isOverwrite
             ? document.snapshot.draft.useHeuristics
             : previousSnapshot.draft.useHeuristics,
       );
@@ -666,7 +706,7 @@ class _ConverterPageState extends State<ConverterPage> {
         _history = storedHistory;
         _historyLoadFailed = false;
       });
-      if (selection.overwriteSettings) {
+      if (selection.isOverwrite) {
         widget.onThemeModeChanged(importedThemeMode);
         widget.onPaletteChanged(importedPalette);
       }
@@ -723,7 +763,14 @@ class _ConverterPageState extends State<ConverterPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (showTitleIcon) ...[
-                  const Icon(Icons.format_quote_rounded, size: 27),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.asset(
+                      'assets/images/jo_quote_converter_icon.png',
+                      width: 27,
+                      height: 27,
+                    ),
+                  ),
                   const SizedBox(width: 9),
                 ],
                 const Text(
@@ -1536,9 +1583,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           document,
                           selection,
                         );
-                        if (imported &&
-                            selection.overwriteSettings &&
-                            mounted) {
+                        if (imported && selection.isOverwrite && mounted) {
                           setState(() {
                             _excludeMarkdownCode =
                                 document.snapshot.draft.excludeMarkdownCode;
@@ -1858,23 +1903,14 @@ class _ShortcutKeys extends StatelessWidget {
   }
 }
 
-enum ArchiveHistoryImportMode { skip, merge, overwrite }
+enum ArchiveImportMode { smartMerge, overwrite }
 
 class ArchiveImportSelection {
-  const ArchiveImportSelection({
-    required this.overwriteWorkspace,
-    required this.overwriteSettings,
-    required this.historyMode,
-  });
+  const ArchiveImportSelection(this.mode);
 
-  final bool overwriteWorkspace;
-  final bool overwriteSettings;
-  final ArchiveHistoryImportMode historyMode;
+  final ArchiveImportMode mode;
 
-  bool get hasSelection =>
-      overwriteWorkspace ||
-      overwriteSettings ||
-      historyMode != ArchiveHistoryImportMode.skip;
+  bool get isOverwrite => mode == ArchiveImportMode.overwrite;
 }
 
 class _DataArchiveSettingsPage extends StatefulWidget {
@@ -1952,7 +1988,7 @@ class _DataArchiveSettingsPageState extends State<_DataArchiveSettingsPage> {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.file_download_outlined),
           title: const Text('导入存档'),
-          subtitle: const Text('校验后选择需要导入的数据'),
+          subtitle: const Text('校验后选择完全覆盖或智能合并'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: _busy ? null : _import,
         ),
@@ -2316,19 +2352,13 @@ class _ArchiveImportDialog extends StatefulWidget {
 }
 
 class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
-  bool _overwriteWorkspace = true;
-  bool _overwriteSettings = true;
-  ArchiveHistoryImportMode _historyMode = ArchiveHistoryImportMode.merge;
+  ArchiveImportMode _mode = ArchiveImportMode.smartMerge;
 
   @override
   Widget build(BuildContext context) {
     final document = widget.document;
     final theme = Theme.of(context);
-    final selection = ArchiveImportSelection(
-      overwriteWorkspace: _overwriteWorkspace,
-      overwriteSettings: _overwriteSettings,
-      historyMode: _historyMode,
-    );
+    final selection = ArchiveImportSelection(_mode);
     return AlertDialog(
       icon: const Icon(Icons.archive_outlined),
       title: const Text('导入此存档？'),
@@ -2345,54 +2375,32 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
               const SizedBox(height: 4),
               Text('历史记录：${document.snapshot.history.length} 条'),
               const Divider(height: 28),
-              CheckboxListTile(
-                key: const Key('importWorkspaceOption'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('覆盖工作区'),
-                subtitle: const Text('替换当前原文和转换结果'),
-                value: _overwriteWorkspace,
-                onChanged: (value) =>
-                    setState(() => _overwriteWorkspace = value ?? false),
-              ),
-              CheckboxListTile(
-                key: const Key('importSettingsOption'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('覆盖设置'),
-                subtitle: const Text('替换行为、外观和快捷键设置'),
-                value: _overwriteSettings,
-                onChanged: (value) =>
-                    setState(() => _overwriteSettings = value ?? false),
-              ),
-              const SizedBox(height: 8),
-              Text('历史记录', style: theme.textTheme.titleSmall),
-              const SizedBox(height: 8),
-              SegmentedButton<ArchiveHistoryImportMode>(
-                key: const Key('importHistoryModeSelector'),
+              Text('导入模式', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 10),
+              SegmentedButton<ArchiveImportMode>(
+                key: const Key('importModeSelector'),
                 segments: const [
                   ButtonSegment(
-                    value: ArchiveHistoryImportMode.skip,
-                    label: Text('不导入'),
+                    value: ArchiveImportMode.smartMerge,
+                    label: Text('智能合并'),
                   ),
                   ButtonSegment(
-                    value: ArchiveHistoryImportMode.merge,
-                    label: Text('合并'),
-                  ),
-                  ButtonSegment(
-                    value: ArchiveHistoryImportMode.overwrite,
-                    label: Text('覆盖'),
+                    value: ArchiveImportMode.overwrite,
+                    label: Text('完全覆盖'),
                   ),
                 ],
-                selected: {_historyMode},
+                selected: {_mode},
                 showSelectedIcon: false,
                 onSelectionChanged: (selection) =>
-                    setState(() => _historyMode = selection.single),
+                    setState(() => _mode = selection.single),
               ),
               const SizedBox(height: 8),
               Text(
-                switch (_historyMode) {
-                  ArchiveHistoryImportMode.skip => '保持当前历史记录不变',
-                  ArchiveHistoryImportMode.merge => '保留现有记录，并跳过完全重复的记录',
-                  ArchiveHistoryImportMode.overwrite => '删除当前历史记录，替换为存档中的记录',
+                switch (_mode) {
+                  ArchiveImportMode.smartMerge =>
+                    '保留当前设置；工作区为空时恢复存档工作区；历史记录去重合并。',
+                  ArchiveImportMode.overwrite =>
+                    '当前工作区、行为与外观设置、快捷键和历史记录都将替换为存档内容。',
                 },
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -2417,9 +2425,7 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
         ),
         FilledButton.icon(
           key: const Key('confirmImportArchiveButton'),
-          onPressed: selection.hasSelection
-              ? () => Navigator.of(context).pop(selection)
-              : null,
+          onPressed: () => Navigator.of(context).pop(selection),
           icon: const Icon(Icons.file_download_outlined),
           label: const Text('导入'),
         ),

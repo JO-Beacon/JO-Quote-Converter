@@ -35,6 +35,22 @@ void main() {
     );
   });
 
+  testWidgets('uses simplified Chinese text editing menu labels', (
+    tester,
+  ) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    final localizations = MaterialLocalizations.of(
+      tester.element(find.byType(TextField).first),
+    );
+
+    expect(localizations.cutButtonLabel, '剪切');
+    expect(localizations.copyButtonLabel, '复制');
+    expect(localizations.pasteButtonLabel, '粘贴');
+    expect(localizations.selectAllButtonLabel, '全选');
+  });
+
   testWidgets('adds one history entry for every conversion', (tester) async {
     await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
     await tester.pumpAndSettle();
@@ -340,7 +356,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Apache License'), findsWidgets);
     expect(find.textContaining('Version 2.0, January 2004'), findsOneWidget);
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
@@ -480,9 +496,9 @@ void main() {
           .value,
       isFalse,
     );
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, '刚刚输入的文本');
@@ -512,9 +528,9 @@ void main() {
           .value,
       isTrue,
     );
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextField).first,
@@ -635,7 +651,7 @@ void main() {
     await tester.tap(find.byKey(const Key('settingsLanguage')));
     await tester.pumpAndSettle();
     expect(find.text('当前唯一支持的界面语言'), findsOneWidget);
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('settingsShortcuts')));
@@ -686,10 +702,10 @@ void main() {
       tester.widget<ListTile>(find.byKey(const Key('shortcutConvert'))).enabled,
       isFalse,
     );
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
     expect(find.text('已关闭'), findsOneWidget);
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, '"关闭快捷键"');
@@ -979,9 +995,9 @@ void main() {
       await tester.tap(find.byKey(const Key('historyDetails_0')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.pageBack();
+      await _tapBackButton(tester);
       await tester.pumpAndSettle();
-      await tester.pageBack();
+      await _tapBackButton(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('设置'));
       await tester.pumpAndSettle();
@@ -995,7 +1011,7 @@ void main() {
   );
 
   testWidgets(
-    'validates import choices and imports the selected archive data',
+    'smart merge preserves a nonempty workspace and current settings',
     (tester) async {
       final duplicateTime = DateTime(2026, 8, 12, 12);
       final archiveService = _MemoryArchiveService(
@@ -1060,22 +1076,6 @@ void main() {
 
       await tester.tap(find.byKey(const Key('importArchive')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('importWorkspaceOption')));
-      await tester.tap(find.byKey(const Key('importSettingsOption')));
-      await tester.tap(find.text('不导入'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.byKey(const Key('confirmImportArchiveButton')),
-            )
-            .onPressed,
-        isNull,
-      );
-      await tester.tap(find.byKey(const Key('importWorkspaceOption')));
-      await tester.tap(find.byKey(const Key('importSettingsOption')));
-      await tester.tap(find.text('合并'));
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('confirmImportArchiveButton')));
       await tester.pumpAndSettle();
 
@@ -1083,32 +1083,32 @@ void main() {
       expect(find.text('存档导入成功'), findsOneWidget);
       expect(await historyStore.load(), hasLength(2));
       final savedDraft = await DraftStore().load();
-      expect(savedDraft.input, '存档原文');
-      expect(savedDraft.output, '存档结果');
-      expect(savedDraft.excludeMarkdownCode, isFalse);
-      expect(savedDraft.useHeuristics, isFalse);
-      expect(await DraftStore().loadThemeMode(), 'dark');
-      expect(await DraftStore().loadPalette(), 'red');
-      expect(await DraftStore().loadKeyboardShortcutsEnabled(), isFalse);
+      expect(savedDraft.input, '当前工作区');
+      expect(savedDraft.output, isEmpty);
+      expect(savedDraft.excludeMarkdownCode, isTrue);
+      expect(savedDraft.useHeuristics, isTrue);
+      expect(await DraftStore().loadThemeMode(), 'system');
+      expect(await DraftStore().loadPalette(), 'gray');
+      expect(await DraftStore().loadKeyboardShortcutsEnabled(), isTrue);
 
-      await tester.pageBack();
+      await _tapBackButton(tester);
       await tester.pumpAndSettle();
-      expect(find.text('深色 · 红色'), findsOneWidget);
-      expect(find.text('已关闭'), findsOneWidget);
-      await tester.pageBack();
+      expect(find.text('跟随系统 · 灰色'), findsOneWidget);
+      expect(find.text('已启用'), findsOneWidget);
+      await _tapBackButton(tester);
       await tester.pumpAndSettle();
       expect(
         tester.widget<TextField>(find.byType(TextField).first).controller?.text,
-        '存档原文',
+        '当前工作区',
       );
       expect(
         tester.widget<TextField>(find.byType(TextField).last).controller?.text,
-        '存档结果',
+        isEmpty,
       );
     },
   );
 
-  testWidgets('overwrites current history with archive history', (
+  testWidgets('completely overwrites the current data with archive data', (
     tester,
   ) async {
     final archiveService = _MemoryArchiveService(
@@ -1159,11 +1159,9 @@ void main() {
     await tester.tap(find.byKey(const Key('importArchive')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('importWorkspaceOption')));
-    await tester.tap(find.byKey(const Key('importSettingsOption')));
-    await tester.tap(find.text('覆盖'));
+    await tester.tap(find.text('完全覆盖'));
     await tester.pumpAndSettle();
-    expect(find.text('删除当前历史记录，替换为存档中的记录'), findsOneWidget);
+    expect(find.text('当前工作区、行为与外观设置、快捷键和历史记录都将替换为存档内容。'), findsOneWidget);
     await tester.tap(find.byKey(const Key('confirmImportArchiveButton')));
     await tester.pumpAndSettle();
 
@@ -1172,13 +1170,13 @@ void main() {
     expect(storedHistory.single.input, '存档历史');
     expect(storedHistory.single.output, '存档历史结果');
     expect(archiveService.backupCalls, 1);
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
-    await tester.pageBack();
+    await _tapBackButton(tester);
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(find.byType(TextField).first).controller?.text,
-      '保留当前工作区',
+      '存档工作区',
     );
   });
 
@@ -1452,3 +1450,10 @@ Iterable<Color> _colorSchemeColors(ColorScheme scheme) => [
   scheme.onInverseSurface,
   scheme.inversePrimary,
 ];
+
+Future<void> _tapBackButton(WidgetTester tester) async {
+  final localizations = MaterialLocalizations.of(
+    tester.element(find.byType(Scaffold).last),
+  );
+  await tester.tap(find.byTooltip(localizations.backButtonTooltip));
+}
