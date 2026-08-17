@@ -21,6 +21,7 @@ class DraftStore {
   static const _useHeuristicsKey = 'draft.useHeuristics';
   static const _themeModeKey = 'settings.themeMode';
   static const _paletteKey = 'settings.palette';
+  static const _localeKey = 'settings.locale';
   static const _keyboardShortcutsEnabledKey =
       'settings.keyboardShortcutsEnabled';
 
@@ -58,6 +59,16 @@ class DraftStore {
     await preferences.setString(_themeModeKey, themeMode);
   }
 
+  Future<String?> loadLocale() async {
+    final preferences = await _preferences;
+    return preferences.getString(_localeKey);
+  }
+
+  Future<void> saveLocale(String locale) async {
+    final preferences = await _preferences;
+    await preferences.setString(_localeKey, locale);
+  }
+
   Future<String?> loadPalette() async {
     final preferences = await _preferences;
     return preferences.getString(_paletteKey);
@@ -82,11 +93,13 @@ class DraftStore {
     required SavedDraft draft,
     required String themeMode,
     required String palette,
+    required String locale,
     required bool keyboardShortcutsEnabled,
   }) async {
     await save(draft);
     await saveThemeMode(themeMode);
     await savePalette(palette);
+    await saveLocale(locale);
     await saveKeyboardShortcutsEnabled(keyboardShortcutsEnabled);
   }
 }

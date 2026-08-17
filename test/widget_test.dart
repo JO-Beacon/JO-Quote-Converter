@@ -650,7 +650,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('settingsLanguage')));
     await tester.pumpAndSettle();
-    expect(find.text('当前唯一支持的界面语言'), findsOneWidget);
+    expect(find.byKey(const Key('languageSimplifiedChinese')), findsOneWidget);
+    expect(find.byKey(const Key('languageEnglish')), findsOneWidget);
     await _tapBackButton(tester);
     await tester.pumpAndSettle();
 
@@ -667,6 +668,30 @@ void main() {
     expect(find.byKey(const Key('shortcutConvert')), findsOneWidget);
     expect(find.text('Ctrl'), findsOneWidget);
     expect(find.text('Enter'), findsOneWidget);
+  });
+
+  testWidgets('switches interface language to English and persists it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('settingsLanguage')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('languageEnglish')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(await DraftStore().loadLocale(), 'en');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Settings'), findsOneWidget);
   });
 
   testWidgets('Ctrl+Enter converts the current text', (tester) async {
@@ -1392,6 +1417,7 @@ class _FailingArchiveDraftStore extends DraftStore {
     required SavedDraft draft,
     required String themeMode,
     required String palette,
+    required String locale,
     required bool keyboardShortcutsEnabled,
   }) async {
     if (failNextArchiveSave) {
@@ -1402,6 +1428,7 @@ class _FailingArchiveDraftStore extends DraftStore {
       draft: draft,
       themeMode: themeMode,
       palette: palette,
+      locale: locale,
       keyboardShortcutsEnabled: keyboardShortcutsEnabled,
     );
   }

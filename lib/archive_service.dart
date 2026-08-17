@@ -27,12 +27,14 @@ class ArchiveSnapshot {
     required this.palette,
     required this.keyboardShortcutsEnabled,
     required this.history,
+    this.locale = 'zh',
   });
 
   final SavedDraft draft;
   final String themeMode;
   final String palette;
   final bool keyboardShortcutsEnabled;
+  final String locale;
   final List<ConversionHistoryEntry> history;
 }
 
@@ -127,6 +129,7 @@ class ArchiveService {
         'useHeuristics': snapshot.draft.useHeuristics,
         'themeMode': snapshot.themeMode,
         'palette': snapshot.palette,
+        'locale': snapshot.locale,
         'keyboardShortcutsEnabled': snapshot.keyboardShortcutsEnabled,
       },
     });
@@ -268,6 +271,7 @@ class ArchiveService {
     final useHeuristics = settings['useHeuristics'];
     final themeMode = settings['themeMode'];
     final palette = settings['palette'];
+    final locale = settings['locale'];
     final keyboardShortcutsEnabled = settings['keyboardShortcutsEnabled'];
     if (excludeMarkdownCode is! bool ||
         useHeuristics is! bool ||
@@ -282,7 +286,9 @@ class ArchiveService {
           'blue',
           'purple',
           'gray',
-        }.contains(palette)) {
+        }.contains(palette) ||
+        (locale != null &&
+            (locale is! String || !const {'zh', 'en'}.contains(locale)))) {
       throw const ArchiveFormatException('存档设置无效。');
     }
 
@@ -327,6 +333,7 @@ class ArchiveService {
         ),
         themeMode: themeMode,
         palette: palette,
+        locale: (locale as String?) ?? 'zh',
         keyboardShortcutsEnabled: keyboardShortcutsEnabled,
         history: history,
       ),

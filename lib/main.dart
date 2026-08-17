@@ -3,17 +3,22 @@ import 'dart:io';
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'archive_service.dart';
 import 'draft_store.dart';
 import 'history_store.dart';
+import 'l10n/app_localizations.dart';
 import 'quote_converter.dart';
+import 'update_service.dart';
 import 'windows_data_migrator.dart';
 
-const appVersion = '0.0.3+3';
+extension AppLocalizationsX on BuildContext {
+  dynamic get l10n => AppLocalizations.of(this);
+}
+
+const appVersion = '0.0.4+4';
 const appAuthor = 'JO-Beacon';
 final appAuthorUrl = Uri.parse('https://github.com/JO-Beacon/');
 
@@ -79,14 +84,33 @@ class QuoteConverterApp extends StatefulWidget {
 
 class _QuoteConverterAppState extends State<QuoteConverterApp> {
   late final DraftStore _draftStore = widget.draftStore ?? DraftStore();
+  Locale _locale = const Locale('zh');
   ThemeMode _themeMode = ThemeMode.system;
   AppPalette _palette = AppPalette.gray;
 
   @override
   void initState() {
     super.initState();
+    unawaited(_restoreLocale());
     unawaited(_restoreThemeMode());
     unawaited(_restorePalette());
+  }
+
+  Future<void> _restoreLocale() async {
+    try {
+      final savedLocale = await _draftStore.loadLocale();
+      if (!mounted || savedLocale == null) return;
+      if (const {'zh', 'en'}.contains(savedLocale)) {
+        setState(() => _locale = Locale(savedLocale));
+      }
+    } catch (_) {
+      // An unavailable preference store should not block the application.
+    }
+  }
+
+  void _changeLocale(Locale locale) {
+    setState(() => _locale = locale);
+    unawaited(_draftStore.saveLocale(locale.languageCode));
   }
 
   Future<void> _restoreThemeMode() async {
@@ -132,11 +156,11 @@ class _QuoteConverterAppState extends State<QuoteConverterApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'JO-引号转换',
+      onGenerateTitle: (context) => context.l10n.appTitle,
       debugShowCheckedModeBanner: false,
-      locale: const Locale('zh', 'CN'),
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      supportedLocales: const [Locale('zh', 'CN')],
+      locale: _locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: _buildAppTheme(Brightness.light, _palette),
       darkTheme: _buildAppTheme(Brightness.dark, _palette),
       themeMode: _themeMode,
@@ -144,8 +168,10 @@ class _QuoteConverterAppState extends State<QuoteConverterApp> {
         historyStore: widget.historyStore,
         archiveService: widget.archiveService,
         draftStore: _draftStore,
+        locale: _locale,
         themeMode: _themeMode,
         palette: _palette,
+        onLocaleChanged: _changeLocale,
         onThemeModeChanged: _changeThemeMode,
         onPaletteChanged: _changePalette,
         startupArchivePath: widget.startupArchivePath,
@@ -215,8 +241,10 @@ class ConverterPage extends StatefulWidget {
     this.historyStore,
     this.archiveService,
     this.draftStore,
+    required this.locale,
     required this.themeMode,
     required this.palette,
+    required this.onLocaleChanged,
     required this.onThemeModeChanged,
     required this.onPaletteChanged,
     this.startupArchivePath,
@@ -225,8 +253,10 @@ class ConverterPage extends StatefulWidget {
   final HistoryStore? historyStore;
   final ArchiveService? archiveService;
   final DraftStore? draftStore;
+  final Locale locale;
   final ThemeMode themeMode;
   final AppPalette palette;
+  final ValueChanged<Locale> onLocaleChanged;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<AppPalette> onPaletteChanged;
   final String? startupArchivePath;
@@ -339,10 +369,10 @@ class _ConverterPageState extends State<ConverterPage> {
       );
       if (selection == null || !mounted) return;
       await _importArchive(document, selection);
-    } on ArchiveFormatException catch (error) {
-      if (mounted) _showMessage(error.message);
+    } on ArchiveFormatException catch (_) {
+      if (mounted) _showMessage(context.l10n.archiveReadFailed);
     } catch (_) {
-      if (mounted) _showMessage('存档读取失败');
+      if (mounted) _showMessage(context.l10n.archiveReadFailed);
     }
   }
 
@@ -417,7 +447,7 @@ class _ConverterPageState extends State<ConverterPage> {
       setState(() => _historyLoadFailed = true);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('历史记录保存失败，本次记录尚未写入磁盘')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.historySaveFailed)));
     }
   }
 
@@ -427,7 +457,7 @@ class _ConverterPageState extends State<ConverterPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('结果已复制')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.resultCopied)));
   }
 
   void _clear() {
@@ -441,15 +471,16 @@ class _ConverterPageState extends State<ConverterPage> {
       context: context,
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
+        final l10n = context.l10n;
         return AlertDialog(
           icon: Icon(Icons.warning_amber_rounded, color: colorScheme.error),
-          title: const Text('确认清空？'),
-          content: const Text('原文和转换结果都会被清空。'),
+          title: Text(l10n.confirmClearTitle),
+          content: Text(l10n.confirmClearContent),
           actions: [
             TextButton(
               key: const Key('cancelClearButton'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(l10n.cancel),
             ),
             FilledButton(
               key: const Key('confirmClearButton'),
@@ -458,7 +489,7 @@ class _ConverterPageState extends State<ConverterPage> {
                 backgroundColor: colorScheme.error,
                 foregroundColor: colorScheme.onError,
               ),
-              child: const Text('清空'),
+              child: Text(l10n.clear),
             ),
           ],
         );
@@ -473,24 +504,27 @@ class _ConverterPageState extends State<ConverterPage> {
     if (workspaceIsNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          icon: const Icon(Icons.restore_rounded),
-          title: const Text('恢复历史记录？'),
-          content: const Text('当前工作区内容将被覆盖。'),
-          actions: [
-            TextButton(
-              key: const Key('cancelRestoreButton'),
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton.icon(
-              key: const Key('confirmRestoreButton'),
-              onPressed: () => Navigator.of(context).pop(true),
-              icon: const Icon(Icons.restore_rounded),
-              label: const Text('恢复'),
-            ),
-          ],
-        ),
+        builder: (context) {
+          final l10n = context.l10n;
+          return AlertDialog(
+            icon: const Icon(Icons.restore_rounded),
+            title: Text(l10n.confirmRestoreTitle),
+            content: Text(l10n.confirmRestoreContent),
+            actions: [
+              TextButton(
+                key: const Key('cancelRestoreButton'),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.cancel),
+              ),
+              FilledButton.icon(
+                key: const Key('confirmRestoreButton'),
+                onPressed: () => Navigator.of(context).pop(true),
+                icon: const Icon(Icons.restore_rounded),
+                label: Text(l10n.restore),
+              ),
+            ],
+          );
+        },
       );
       if (confirmed != true || !mounted) return false;
     }
@@ -508,7 +542,7 @@ class _ConverterPageState extends State<ConverterPage> {
     _inputFocusNode.requestFocus();
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('已恢复到工作区')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.restoreSuccess)));
     return true;
   }
 
@@ -560,11 +594,13 @@ class _ConverterPageState extends State<ConverterPage> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => SettingsPage(
+          initialLocale: widget.locale,
           initialExcludeMarkdownCode: _excludeMarkdownCode,
           initialUseHeuristics: _useHeuristics,
           initialThemeMode: widget.themeMode,
           initialPalette: widget.palette,
           initialKeyboardShortcutsEnabled: _keyboardShortcutsEnabled,
+          onLocaleChanged: widget.onLocaleChanged,
           onExcludeMarkdownCodeChanged: (value) {
             setState(() => _excludeMarkdownCode = value);
             _scheduleSave();
@@ -588,7 +624,7 @@ class _ConverterPageState extends State<ConverterPage> {
           onRestoreAutomaticBackup: (backup) => _importArchive(
             backup.document!,
             const ArchiveImportSelection(ArchiveImportMode.overwrite),
-            successMessage: '自动备份已恢复',
+            successMessage: context.l10n.automaticBackupRestored,
           ),
         ),
       ),
@@ -606,6 +642,7 @@ class _ConverterPageState extends State<ConverterPage> {
       ),
       themeMode: widget.themeMode.name,
       palette: widget.palette.name,
+      locale: widget.locale.languageCode,
       keyboardShortcutsEnabled: _keyboardShortcutsEnabled,
       history: List.of(_history),
     );
@@ -618,10 +655,10 @@ class _ConverterPageState extends State<ConverterPage> {
         snapshot: await _currentArchiveSnapshot(),
         appVersion: appVersion,
       );
-      if (exported && mounted) _showMessage('存档导出成功');
+      if (exported && mounted) _showMessage(context.l10n.archiveExportSuccess);
       return exported;
     } catch (_) {
-      if (mounted) _showMessage('存档导出失败');
+      if (mounted) _showMessage(context.l10n.archiveExportFailed);
       return false;
     }
   }
@@ -629,11 +666,11 @@ class _ConverterPageState extends State<ConverterPage> {
   Future<ArchiveDocument?> _pickArchive() async {
     try {
       return await _archiveService.pickAndDecode();
-    } on ArchiveFormatException catch (error) {
-      if (mounted) _showMessage(error.message);
+    } on ArchiveFormatException catch (_) {
+      if (mounted) _showMessage(context.l10n.archiveReadFailed);
       return null;
     } catch (_) {
-      if (mounted) _showMessage('存档读取失败');
+      if (mounted) _showMessage(context.l10n.archiveReadFailed);
       return null;
     }
   }
@@ -641,7 +678,7 @@ class _ConverterPageState extends State<ConverterPage> {
   Future<bool> _importArchive(
     ArchiveDocument document,
     ArchiveImportSelection selection, {
-    String successMessage = '存档导入成功',
+    String? successMessage,
   }) async {
     final previousSnapshot = await _currentArchiveSnapshot();
     try {
@@ -669,6 +706,9 @@ class _ConverterPageState extends State<ConverterPage> {
       final nextPalette = selection.isOverwrite
           ? document.snapshot.palette
           : previousSnapshot.palette;
+      final nextLocale = selection.isOverwrite
+          ? document.snapshot.locale
+          : previousSnapshot.locale;
       final nextKeyboardShortcutsEnabled = selection.isOverwrite
           ? document.snapshot.keyboardShortcutsEnabled
           : previousSnapshot.keyboardShortcutsEnabled;
@@ -686,6 +726,7 @@ class _ConverterPageState extends State<ConverterPage> {
         draft: nextBehaviorDraft,
         themeMode: nextThemeMode,
         palette: nextPalette,
+        locale: nextLocale,
         keyboardShortcutsEnabled: nextKeyboardShortcutsEnabled,
       );
 
@@ -709,8 +750,9 @@ class _ConverterPageState extends State<ConverterPage> {
       if (selection.isOverwrite) {
         widget.onThemeModeChanged(importedThemeMode);
         widget.onPaletteChanged(importedPalette);
+        widget.onLocaleChanged(Locale(nextLocale));
       }
-      _showMessage(successMessage);
+      _showMessage(successMessage ?? context.l10n.archiveImportSuccess);
       return true;
     } catch (_) {
       try {
@@ -719,12 +761,13 @@ class _ConverterPageState extends State<ConverterPage> {
           draft: previousSnapshot.draft,
           themeMode: previousSnapshot.themeMode,
           palette: previousSnapshot.palette,
+          locale: previousSnapshot.locale,
           keyboardShortcutsEnabled: previousSnapshot.keyboardShortcutsEnabled,
         );
       } catch (_) {
         // The automatic backup remains available if in-process rollback fails.
       }
-      if (mounted) _showMessage('存档导入失败，已恢复导入前的数据');
+      if (mounted) _showMessage(context.l10n.archiveImportFailedRolledBack);
       return false;
     }
   }
@@ -737,6 +780,7 @@ class _ConverterPageState extends State<ConverterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 760;
     final showTitleIcon = screenWidth >= 360;
@@ -773,21 +817,21 @@ class _ConverterPageState extends State<ConverterPage> {
                   ),
                   const SizedBox(width: 9),
                 ],
-                const Text(
-                  'JO-引号转换',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                Text(
+                  l10n.appTitle,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ],
             ),
             actions: [
               IconButton(
                 onPressed: _openHistory,
-                tooltip: '历史记录',
+                tooltip: l10n.history,
                 icon: const Icon(Icons.history_rounded),
               ),
               IconButton(
                 onPressed: _openSettings,
-                tooltip: '设置',
+                tooltip: l10n.settings,
                 icon: const Icon(Icons.settings_rounded),
               ),
               const SizedBox(width: 8),
@@ -832,11 +876,11 @@ class _ConverterPageState extends State<ConverterPage> {
 
   Widget _buildInputEditor() {
     return _EditorPane(
-      title: '原文',
+      title: context.l10n.source,
       characterCount: _inputController.text.length,
       controller: _inputController,
       focusNode: _inputFocusNode,
-      hintText: '在此输入或粘贴文本',
+      hintText: context.l10n.sourceHint,
       titleActions: _EditorActions(
         onClear: _inputController.text.isEmpty && _outputController.text.isEmpty
             ? null
@@ -848,10 +892,10 @@ class _ConverterPageState extends State<ConverterPage> {
 
   Widget _buildOutputEditor() {
     return _EditorPane(
-      title: '转换结果',
+      title: context.l10n.result,
       characterCount: _outputController.text.length,
       controller: _outputController,
-      hintText: '转换结果将在此显示',
+      hintText: context.l10n.resultHint,
       readOnly: true,
       titleActions: _CopyAction(
         onCopy: _outputController.text.isEmpty ? null : _copyResult,
@@ -938,15 +982,16 @@ class _HistoryPageState extends State<HistoryPage> {
       context: context,
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
+        final l10n = context.l10n;
         return AlertDialog(
           icon: Icon(Icons.delete_outline_rounded, color: colorScheme.error),
-          title: const Text('删除这条历史记录？'),
-          content: const Text('删除后无法恢复。'),
+          title: Text(l10n.historyDeleteTitle),
+          content: Text(l10n.historyDeleteContent),
           actions: [
             TextButton(
               key: const Key('cancelDeleteHistoryButton'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(l10n.cancel),
             ),
             FilledButton.icon(
               key: const Key('confirmDeleteHistoryButton'),
@@ -956,7 +1001,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 foregroundColor: colorScheme.onError,
               ),
               icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text('删除'),
+              label: Text(l10n.delete),
             ),
           ],
         );
@@ -977,7 +1022,9 @@ class _HistoryPageState extends State<HistoryPage> {
       }
     });
     if (deleted) unawaited(_loadStorageSize());
-    _showResult(deleted ? '历史记录已删除' : '历史记录删除失败');
+    _showResult(
+      deleted ? context.l10n.historyDeleted : context.l10n.historyDeleteFailed,
+    );
   }
 
   Future<void> _confirmClear() async {
@@ -985,15 +1032,16 @@ class _HistoryPageState extends State<HistoryPage> {
       context: context,
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
+        final l10n = context.l10n;
         return AlertDialog(
           icon: Icon(Icons.delete_sweep_outlined, color: colorScheme.error),
-          title: const Text('清空全部历史记录？'),
-          content: Text('将永久删除全部 ${_entries.length} 条历史记录，此操作无法撤销。'),
+          title: Text(l10n.historyClearTitle),
+          content: Text(l10n.historyClearContent(_entries.length)),
           actions: [
             TextButton(
               key: const Key('cancelClearHistoryButton'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(l10n.cancel),
             ),
             FilledButton.icon(
               key: const Key('confirmClearHistoryButton'),
@@ -1003,7 +1051,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 foregroundColor: colorScheme.onError,
               ),
               icon: const Icon(Icons.delete_sweep_outlined),
-              label: const Text('全部清空'),
+              label: Text(l10n.clearAll),
             ),
           ],
         );
@@ -1019,7 +1067,9 @@ class _HistoryPageState extends State<HistoryPage> {
       if (cleared) _entries = [];
     });
     if (cleared) unawaited(_loadStorageSize());
-    _showResult(cleared ? '历史记录已全部清空' : '历史记录清空失败');
+    _showResult(
+      cleared ? context.l10n.historyCleared : context.l10n.historyClearFailed,
+    );
   }
 
   void _showResult(String message) {
@@ -1030,13 +1080,14 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     final filteredEntries = _filteredEntries;
     final queryIsEmpty = _searchController.text.trim().isEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('历史记录'),
+        title: Text(l10n.history),
         actions: [
           TextButton.icon(
             key: const Key('clearAllHistoryButton'),
@@ -1047,7 +1098,7 @@ class _HistoryPageState extends State<HistoryPage> {
               foregroundColor: theme.colorScheme.error,
             ),
             icon: const Icon(Icons.delete_sweep_outlined, size: 19),
-            label: const Text('清空'),
+            label: Text(l10n.clear),
           ),
           const SizedBox(width: 8),
         ],
@@ -1066,7 +1117,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     controller: _searchController,
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
-                      hintText: '搜索原文或转换结果',
+                      hintText: l10n.historySearchHint,
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: queryIsEmpty
                           ? null
@@ -1076,7 +1127,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                 _searchController.clear();
                                 setState(() {});
                               },
-                              tooltip: '清除搜索',
+                              tooltip: l10n.clearSearch,
                               icon: const Icon(Icons.close_rounded),
                             ),
                     ),
@@ -1089,8 +1140,11 @@ class _HistoryPageState extends State<HistoryPage> {
                       Expanded(
                         child: Text(
                           queryIsEmpty
-                              ? '${_entries.length} 条记录'
-                              : '${filteredEntries.length} 条结果，共 ${_entries.length} 条记录',
+                              ? l10n.historyCount(_entries.length)
+                              : l10n.historySearchCount(
+                                  filteredEntries.length,
+                                  _entries.length,
+                                ),
                           key: const Key('historyCount'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
@@ -1099,7 +1153,9 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                       if (_storageSizeBytes != null)
                         Text(
-                          '占用 ${_formatFileSize(_storageSizeBytes!)}',
+                          l10n.historyStorageUsage(
+                            _formatFileSize(_storageSizeBytes!),
+                          ),
                           key: const Key('historyStorageSize'),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
@@ -1112,8 +1168,8 @@ class _HistoryPageState extends State<HistoryPage> {
                   MaterialBanner(
                     content: Text(
                       _entries.isEmpty
-                          ? '历史记录读取失败，请重新启动应用后重试。'
-                          : '部分历史记录尚未写入磁盘。',
+                          ? l10n.historyLoadFailedRestart
+                          : l10n.historyPartiallySaved,
                     ),
                     leading: const Icon(Icons.error_outline_rounded),
                     actions: const [SizedBox.shrink()],
@@ -1131,6 +1187,7 @@ class _HistoryPageState extends State<HistoryPage> {
     BuildContext context,
     List<ConversionHistoryEntry> filteredEntries,
   ) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     if (widget.isLoading) {
       return const Center(
@@ -1152,7 +1209,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              '暂无历史记录',
+              l10n.noHistory,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1165,7 +1222,7 @@ class _HistoryPageState extends State<HistoryPage> {
     if (filteredEntries.isEmpty) {
       return Center(
         child: Text(
-          '没有匹配的历史记录',
+          l10n.noMatchingHistory,
           style: theme.textTheme.bodyLarge?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1217,6 +1274,7 @@ class _HistoryEntryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     final mutedStyle = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -1238,7 +1296,7 @@ class _HistoryEntryView extends StatelessWidget {
               IconButton(
                 key: Key('historyDetails_$index'),
                 onPressed: onDetails,
-                tooltip: '查看详情',
+                tooltip: l10n.viewDetails,
                 style: IconButton.styleFrom(
                   minimumSize: const Size.square(30),
                   maximumSize: const Size.square(30),
@@ -1265,13 +1323,13 @@ class _HistoryEntryView extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.restore_rounded, size: 16),
-                label: const Text('恢复'),
+                label: Text(l10n.restore),
               ),
               const SizedBox(width: 2),
               IconButton(
                 key: Key('historyDelete_$index'),
                 onPressed: onDelete,
-                tooltip: '删除',
+                tooltip: l10n.delete,
                 style: IconButton.styleFrom(
                   minimumSize: const Size.square(30),
                   maximumSize: const Size.square(30),
@@ -1287,20 +1345,20 @@ class _HistoryEntryView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text('原文', style: mutedStyle),
+          Text(l10n.source, style: mutedStyle),
           const SizedBox(height: 3),
           Text(
-            entry.input.isEmpty ? '（空文本）' : entry.input,
+            entry.input.isEmpty ? l10n.emptyText : entry.input,
             key: Key('historyInput_$index'),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 10),
-          Text('转换结果', style: mutedStyle),
+          Text(l10n.result, style: mutedStyle),
           const SizedBox(height: 3),
           Text(
-            entry.output.isEmpty ? '（空文本）' : entry.output,
+            entry.output.isEmpty ? l10n.emptyText : entry.output,
             key: Key('historyOutput_$index'),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
@@ -1331,9 +1389,10 @@ class _HistoryDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('历史记录详情')),
+      appBar: AppBar(title: Text(l10n.historyDetailTitle)),
       body: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,
@@ -1351,16 +1410,24 @@ class _HistoryDetailPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 _HistoryDetailSection(
                   key: const Key('historyDetailInput'),
-                  title: '原文',
+                  title: l10n.source,
                   text: entry.input,
-                  onCopy: () => _copy(context, entry.input, '原文已复制'),
+                  onCopy: () => _copy(
+                    context,
+                    entry.input,
+                    l10n.historyDetailSourceCopied,
+                  ),
                 ),
                 const Divider(height: 32),
                 _HistoryDetailSection(
                   key: const Key('historyDetailOutput'),
-                  title: '转换结果',
+                  title: l10n.result,
                   text: entry.output,
-                  onCopy: () => _copy(context, entry.output, '转换结果已复制'),
+                  onCopy: () => _copy(
+                    context,
+                    entry.output,
+                    l10n.historyDetailResultCopied,
+                  ),
                 ),
               ],
             ),
@@ -1385,6 +1452,7 @@ class _HistoryDetailSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1394,13 +1462,13 @@ class _HistoryDetailSection extends StatelessWidget {
             Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
             IconButton(
               onPressed: onCopy,
-              tooltip: '复制$title',
+              tooltip: l10n.copyTitle(title),
               icon: const Icon(Icons.copy_rounded),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        SelectableText(text.isEmpty ? '（空文本）' : text),
+        SelectableText(text.isEmpty ? l10n.emptyText : text),
       ],
     );
   }
@@ -1425,11 +1493,13 @@ String _formatFileSize(int bytes) {
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
+    required this.initialLocale,
     required this.initialExcludeMarkdownCode,
     required this.initialUseHeuristics,
     required this.initialThemeMode,
     required this.initialPalette,
     required this.initialKeyboardShortcutsEnabled,
+    required this.onLocaleChanged,
     required this.onExcludeMarkdownCodeChanged,
     required this.onUseHeuristicsChanged,
     required this.onThemeModeChanged,
@@ -1444,11 +1514,13 @@ class SettingsPage extends StatefulWidget {
     required this.onRestoreAutomaticBackup,
   });
 
+  final Locale initialLocale;
   final bool initialExcludeMarkdownCode;
   final bool initialUseHeuristics;
   final ThemeMode initialThemeMode;
   final AppPalette initialPalette;
   final bool initialKeyboardShortcutsEnabled;
+  final ValueChanged<Locale> onLocaleChanged;
   final ValueChanged<bool> onExcludeMarkdownCodeChanged;
   final ValueChanged<bool> onUseHeuristicsChanged;
   final ValueChanged<ThemeMode> onThemeModeChanged;
@@ -1471,6 +1543,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  late Locale _locale;
   late bool _excludeMarkdownCode;
   late bool _useHeuristics;
   late ThemeMode _themeMode;
@@ -1480,6 +1553,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _locale = widget.initialLocale;
     _excludeMarkdownCode = widget.initialExcludeMarkdownCode;
     _useHeuristics = widget.initialUseHeuristics;
     _themeMode = widget.initialThemeMode;
@@ -1491,10 +1565,16 @@ class _SettingsPageState extends State<SettingsPage> {
     context,
   ).push(MaterialPageRoute<void>(builder: (context) => page));
 
+  void _changeLocale(Locale locale) {
+    setState(() => _locale = locale);
+    widget.onLocaleChanged(locale);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(title: Text(l10n.settings)),
       body: SafeArea(
         child: Align(
           alignment: Alignment.topCenter,
@@ -1506,16 +1586,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsDestination(
                   key: const Key('settingsLanguage'),
                   icon: Icons.language_rounded,
-                  title: '语言',
-                  subtitle: '简体中文',
-                  onTap: () => _openPage(const _LanguageSettingsPage()),
+                  title: l10n.languageTitle,
+                  subtitle: _locale.languageCode == 'en'
+                      ? l10n.languageEnglish
+                      : l10n.languageSimplifiedChinese,
+                  onTap: () => _openPage(
+                    _LanguageSettingsPage(
+                      locale: _locale,
+                      onLocaleChanged: _changeLocale,
+                    ),
+                  ),
                 ),
                 _SettingsDestination(
                   key: const Key('settingsAppearance'),
                   icon: Icons.palette_outlined,
-                  title: '外观',
-                  subtitle:
-                      '${_themeModeLabel(_themeMode)} · ${_palette.label}色',
+                  title: l10n.appearanceTitle,
+                  subtitle: l10n.settingsAppearanceSubtitle(
+                    _themeModeLabel(context, _themeMode),
+                    _paletteLabel(context, _palette),
+                  ),
                   onTap: () => _openPage(
                     _AppearanceSettingsPage(
                       initialThemeMode: _themeMode,
@@ -1534,8 +1623,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsDestination(
                   key: const Key('settingsBehavior'),
                   icon: Icons.tune_rounded,
-                  title: '行为',
-                  subtitle: '转换规则与 Markdown 代码排除',
+                  title: l10n.behaviorTitle,
+                  subtitle: l10n.behaviorSubtitle,
                   onTap: () => _openPage(
                     _BehaviorSettingsPage(
                       initialExcludeMarkdownCode: _excludeMarkdownCode,
@@ -1554,8 +1643,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsDestination(
                   key: const Key('settingsShortcuts'),
                   icon: Icons.keyboard_outlined,
-                  title: '快捷键',
-                  subtitle: _keyboardShortcutsEnabled ? '已启用' : '已关闭',
+                  title: l10n.shortcutsTitle,
+                  subtitle: _keyboardShortcutsEnabled
+                      ? l10n.shortcutsSubtitleEnabled
+                      : l10n.shortcutsSubtitleDisabled,
                   onTap: () => _openPage(
                     _ShortcutSettingsPage(
                       initialEnabled: _keyboardShortcutsEnabled,
@@ -1569,8 +1660,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsDestination(
                   key: const Key('settingsDataArchive'),
                   icon: Icons.archive_outlined,
-                  title: '数据与存档',
-                  subtitle: '导出、导入与自动回退备份',
+                  title: l10n.dataArchiveTitle,
+                  subtitle: l10n.dataArchiveSubtitle,
                   onTap: () => _openPage(
                     _DataArchiveSettingsPage(
                       onExport: widget.onExportArchive,
@@ -1597,6 +1688,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               (palette) =>
                                   palette.name == document.snapshot.palette,
                             );
+                            _locale = Locale(document.snapshot.locale);
                             _keyboardShortcutsEnabled =
                                 document.snapshot.keyboardShortcutsEnabled;
                           });
@@ -1622,6 +1714,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               (palette) =>
                                   palette.name == document.snapshot.palette,
                             );
+                            _locale = Locale(document.snapshot.locale);
                             _keyboardShortcutsEnabled =
                                 document.snapshot.keyboardShortcutsEnabled;
                           });
@@ -1634,8 +1727,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsDestination(
                   key: const Key('settingsAbout'),
                   icon: Icons.info_outline_rounded,
-                  title: '关于',
-                  subtitle: 'JO-引号转换 $appVersion',
+                  title: l10n.aboutTitle,
+                  subtitle: l10n.aboutSubtitle(appVersion),
                   onTap: () => _openPage(const _AboutSettingsPage()),
                 ),
               ],
@@ -1647,11 +1740,26 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-String _themeModeLabel(ThemeMode mode) => switch (mode) {
-  ThemeMode.system => '跟随系统',
-  ThemeMode.light => '浅色',
-  ThemeMode.dark => '深色',
-};
+String _themeModeLabel(BuildContext context, ThemeMode mode) {
+  final l10n = context.l10n;
+  return switch (mode) {
+    ThemeMode.system => l10n.themeSystem,
+    ThemeMode.light => l10n.themeLight,
+    ThemeMode.dark => l10n.themeDark,
+  };
+}
+
+String _paletteLabel(BuildContext context, AppPalette palette) {
+  final l10n = context.l10n;
+  return switch (palette) {
+    AppPalette.red => l10n.paletteRed,
+    AppPalette.yellow => l10n.paletteYellow,
+    AppPalette.green => l10n.paletteGreen,
+    AppPalette.blue => l10n.paletteBlue,
+    AppPalette.purple => l10n.palettePurple,
+    AppPalette.gray => l10n.paletteGray,
+  };
+}
 
 class _SettingsDestination extends StatelessWidget {
   const _SettingsDestination({
@@ -1682,20 +1790,45 @@ class _SettingsDestination extends StatelessWidget {
 }
 
 class _LanguageSettingsPage extends StatelessWidget {
-  const _LanguageSettingsPage();
+  const _LanguageSettingsPage({
+    required this.locale,
+    required this.onLocaleChanged,
+  });
+
+  final Locale locale;
+  final ValueChanged<Locale> onLocaleChanged;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return _SettingsSubpage(
-      title: '语言',
-      children: const [
+      title: l10n.languageTitle,
+      children: [
         ListTile(
-          key: Key('languageSimplifiedChinese'),
+          key: const Key('languageSimplifiedChinese'),
           contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.translate_rounded),
-          title: Text('简体中文'),
-          subtitle: Text('当前唯一支持的界面语言'),
-          trailing: Icon(Icons.check_rounded),
+          leading: const Icon(Icons.translate_rounded),
+          title: Text(l10n.languageSimplifiedChinese),
+          trailing: locale.languageCode == 'zh'
+              ? const Icon(Icons.check_rounded)
+              : null,
+          onTap: () {
+            onLocaleChanged(const Locale('zh'));
+            Navigator.of(context).pop();
+          },
+        ),
+        ListTile(
+          key: const Key('languageEnglish'),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.translate_rounded),
+          title: Text(l10n.languageEnglish),
+          trailing: locale.languageCode == 'en'
+              ? const Icon(Icons.check_rounded)
+              : null,
+          onTap: () {
+            onLocaleChanged(const Locale('en'));
+            Navigator.of(context).pop();
+          },
         ),
       ],
     );
@@ -1725,15 +1858,16 @@ class _BehaviorSettingsPageState extends State<_BehaviorSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return _SettingsSubpage(
-      title: '行为',
+      title: l10n.behaviorTitle,
       children: [
         SwitchListTile(
           key: const Key('excludeMarkdownCodeSetting'),
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.code_rounded),
-          title: const Text('排除 Markdown 代码'),
-          subtitle: const Text('保留围栏代码块和行内代码中的原始引号'),
+          title: Text(l10n.excludeMarkdownCodeTitle),
+          subtitle: Text(l10n.excludeMarkdownCodeSubtitle),
           value: _excludeMarkdownCode,
           onChanged: (value) {
             setState(() => _excludeMarkdownCode = value);
@@ -1744,8 +1878,8 @@ class _BehaviorSettingsPageState extends State<_BehaviorSettingsPage> {
           key: const Key('useHeuristicsSetting'),
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.auto_awesome_rounded),
-          title: const Text('启发式判断'),
-          subtitle: const Text('尽量保留缩写、所有格、单位和年代中的撇号'),
+          title: Text(l10n.useHeuristicsTitle),
+          subtitle: Text(l10n.useHeuristicsSubtitle),
           value: _useHeuristics,
           onChanged: (value) {
             setState(() => _useHeuristics = value);
@@ -1781,16 +1915,20 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return _SettingsSubpage(
-      title: '外观',
+      title: l10n.appearanceTitle,
       children: [
-        const _SettingsSectionTitle('模式'),
+        _SettingsSectionTitle(l10n.appearanceModeSectionTitle),
         const SizedBox(height: 12),
         SegmentedButton<ThemeMode>(
-          segments: const [
-            ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
-            ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
-            ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
+          segments: [
+            ButtonSegment(
+              value: ThemeMode.system,
+              label: Text(l10n.themeSystem),
+            ),
+            ButtonSegment(value: ThemeMode.light, label: Text(l10n.themeLight)),
+            ButtonSegment(value: ThemeMode.dark, label: Text(l10n.themeDark)),
           ],
           selected: {_themeMode},
           showSelectedIcon: false,
@@ -1802,7 +1940,7 @@ class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
           },
         ),
         const SizedBox(height: 28),
-        const _SettingsSectionTitle('配色'),
+        _SettingsSectionTitle(l10n.appearancePaletteSectionTitle),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
@@ -1842,15 +1980,16 @@ class _ShortcutSettingsPageState extends State<_ShortcutSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return _SettingsSubpage(
-      title: '快捷键',
+      title: l10n.shortcutsTitle,
       children: [
         SwitchListTile(
           key: const Key('keyboardShortcutsEnabledSetting'),
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.keyboard_outlined),
-          title: const Text('启用键盘快捷键'),
-          subtitle: const Text('关闭后，所有键盘快捷键将停止响应'),
+          title: Text(l10n.enableKeyboardShortcutsTitle),
+          subtitle: Text(l10n.enableKeyboardShortcutsSubtitle),
           value: _enabled,
           onChanged: (enabled) {
             setState(() => _enabled = enabled);
@@ -1863,7 +2002,7 @@ class _ShortcutSettingsPageState extends State<_ShortcutSettingsPage> {
           contentPadding: EdgeInsets.zero,
           enabled: _enabled,
           leading: const Icon(Icons.play_arrow_rounded),
-          title: const Text('转换'),
+          title: Text(l10n.shortcutConvertTitle),
           trailing: const _ShortcutKeys(keys: ['Ctrl', 'Enter']),
         ),
       ],
@@ -1969,16 +2108,17 @@ class _DataArchiveSettingsPageState extends State<_DataArchiveSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return _SettingsSubpage(
-      title: '数据与存档',
+      title: l10n.dataArchiveTitle,
       children: [
         ListTile(
           key: const Key('exportArchive'),
           enabled: !_busy,
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.file_upload_outlined),
-          title: const Text('导出存档'),
-          subtitle: const Text('保存工作区、设置和全部历史记录'),
+          title: Text(l10n.exportArchiveTitle),
+          subtitle: Text(l10n.exportArchiveSubtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: _busy ? null : _export,
         ),
@@ -1987,8 +2127,8 @@ class _DataArchiveSettingsPageState extends State<_DataArchiveSettingsPage> {
           enabled: !_busy,
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.file_download_outlined),
-          title: const Text('导入存档'),
-          subtitle: const Text('校验后选择完全覆盖或智能合并'),
+          title: Text(l10n.importArchiveTitle),
+          subtitle: Text(l10n.importArchiveSubtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: _busy ? null : _import,
         ),
@@ -1997,8 +2137,8 @@ class _DataArchiveSettingsPageState extends State<_DataArchiveSettingsPage> {
           enabled: !_busy,
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.settings_backup_restore_rounded),
-          title: const Text('自动备份'),
-          subtitle: const Text('查看、恢复或清理导入前备份'),
+          title: Text(l10n.automaticBackupsTitle),
+          subtitle: Text(l10n.automaticBackupsSubtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: _busy
               ? null
@@ -2019,12 +2159,10 @@ class _DataArchiveSettingsPageState extends State<_DataArchiveSettingsPage> {
             child: LinearProgressIndicator(),
           ),
         const SizedBox(height: 20),
-        const _SettingsSectionTitle('存档说明'),
+        _SettingsSectionTitle(l10n.archiveNotesSectionTitle),
         const SizedBox(height: 10),
         Text(
-          '存档使用 .joquoteconverter 后缀并采用 ZIP Deflate 压缩。'
-          '存档包含原文、转换结果、设置和历史记录，不加密，请妥善保管。'
-          '确认导入后，应用会先在本机自动保存一份导入前备份。',
+          l10n.archiveNotes,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.55),
         ),
       ],
@@ -2077,7 +2215,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = '自动备份读取失败';
+        _loadError = context.l10n.automaticBackupsLoadFailed;
       });
     }
   }
@@ -2087,30 +2225,33 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
     if (document == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.settings_backup_restore_rounded),
-        title: const Text('恢复此自动备份？'),
-        content: Text(
-          '将覆盖当前工作区、设置和全部历史记录。\n\n'
-          '备份时间：${_formatHistoryTime(document.exportedAt)}\n'
-          '来源版本：${document.appVersion}\n'
-          '历史记录：${document.snapshot.history.length} 条\n\n'
-          '恢复前会再次备份当前数据。',
-        ),
-        actions: [
-          TextButton(
-            key: const Key('cancelRestoreAutomaticBackupButton'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+      builder: (context) {
+        final l10n = context.l10n;
+        return AlertDialog(
+          icon: const Icon(Icons.settings_backup_restore_rounded),
+          title: Text(l10n.restoreAutomaticBackupTitle),
+          content: Text(
+            l10n.restoreAutomaticBackupContent(
+              _formatHistoryTime(document.exportedAt),
+              document.appVersion,
+              document.snapshot.history.length,
+            ),
           ),
-          FilledButton.icon(
-            key: const Key('confirmRestoreAutomaticBackupButton'),
-            onPressed: () => Navigator.of(context).pop(true),
-            icon: const Icon(Icons.restore_rounded),
-            label: const Text('恢复'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              key: const Key('cancelRestoreAutomaticBackupButton'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton.icon(
+              key: const Key('confirmRestoreAutomaticBackupButton'),
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.restore_rounded),
+              label: Text(l10n.restore),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true || !mounted) return;
 
@@ -2126,15 +2267,16 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
       context: context,
       builder: (context) {
         final colors = Theme.of(context).colorScheme;
+        final l10n = context.l10n;
         return AlertDialog(
           icon: Icon(Icons.delete_outline_rounded, color: colors.error),
-          title: const Text('删除此自动备份？'),
-          content: const Text('删除后无法恢复。'),
+          title: Text(l10n.deleteAutomaticBackupTitle),
+          content: Text(l10n.deleteAutomaticBackupContent),
           actions: [
             TextButton(
               key: const Key('cancelDeleteAutomaticBackupButton'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(l10n.cancel),
             ),
             FilledButton.icon(
               key: const Key('confirmDeleteAutomaticBackupButton'),
@@ -2144,7 +2286,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
                 foregroundColor: colors.onError,
               ),
               icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text('删除'),
+              label: Text(l10n.delete),
             ),
           ],
         );
@@ -2162,11 +2304,11 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
             .where((item) => item.fileName != backup.fileName)
             .toList(growable: false);
       });
-      _showMessage('自动备份已删除');
+      _showMessage(context.l10n.automaticBackupDeleted);
     } catch (_) {
       if (!mounted) return;
       setState(() => _operationInProgress = false);
-      _showMessage('自动备份删除失败');
+      _showMessage(context.l10n.automaticBackupDeleteFailed);
     }
   }
 
@@ -2175,15 +2317,16 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
       context: context,
       builder: (context) {
         final colors = Theme.of(context).colorScheme;
+        final l10n = context.l10n;
         return AlertDialog(
           icon: Icon(Icons.delete_sweep_outlined, color: colors.error),
-          title: const Text('清空全部自动备份？'),
-          content: Text('将永久删除全部 ${_backups.length} 个自动备份，此操作无法撤销。'),
+          title: Text(l10n.clearAutomaticBackupsTitle),
+          content: Text(l10n.clearAutomaticBackupsContent(_backups.length)),
           actions: [
             TextButton(
               key: const Key('cancelClearAutomaticBackupsButton'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
+              child: Text(l10n.cancel),
             ),
             FilledButton.icon(
               key: const Key('confirmClearAutomaticBackupsButton'),
@@ -2193,7 +2336,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
                 foregroundColor: colors.onError,
               ),
               icon: const Icon(Icons.delete_sweep_outlined),
-              label: const Text('全部清空'),
+              label: Text(l10n.clearAll),
             ),
           ],
         );
@@ -2209,11 +2352,11 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
         _operationInProgress = false;
         _backups = const [];
       });
-      _showMessage('自动备份已全部清空');
+      _showMessage(context.l10n.automaticBackupsCleared);
     } catch (_) {
       if (!mounted) return;
       setState(() => _operationInProgress = false);
-      _showMessage('自动备份清空失败');
+      _showMessage(context.l10n.automaticBackupsClearFailed);
     }
   }
 
@@ -2225,10 +2368,11 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('自动备份'),
+        title: Text(l10n.automaticBackupsTitle),
         actions: [
           TextButton.icon(
             key: const Key('clearAutomaticBackupsButton'),
@@ -2239,7 +2383,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
               foregroundColor: theme.colorScheme.error,
             ),
             icon: const Icon(Icons.delete_sweep_outlined, size: 19),
-            label: const Text('清空'),
+            label: Text(l10n.clear),
           ),
           const SizedBox(width: 8),
         ],
@@ -2257,6 +2401,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_loadError != null) {
@@ -2269,7 +2414,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
             OutlinedButton.icon(
               onPressed: _load,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重试'),
+              label: Text(l10n.retry),
             ),
           ],
         ),
@@ -2278,7 +2423,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
     if (_backups.isEmpty) {
       return Center(
         child: Text(
-          '暂无自动备份',
+          l10n.noAutomaticBackups,
           style: theme.textTheme.bodyLarge?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -2304,15 +2449,17 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
           ),
           title: Text(
             document == null
-                ? '损坏的自动备份'
+                ? l10n.corruptedAutomaticBackup
                 : _formatHistoryTime(document.exportedAt),
           ),
           subtitle: Text(
             document == null
                 ? '${backup.errorMessage} · ${_formatFileSize(backup.sizeBytes)}'
-                : '版本 ${document.appVersion} · '
-                      '${document.snapshot.history.length} 条历史 · '
-                      '${_formatFileSize(backup.sizeBytes)}',
+                : l10n.automaticBackupSummary(
+                    document.appVersion,
+                    document.snapshot.history.length,
+                    _formatFileSize(backup.sizeBytes),
+                  ),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -2322,7 +2469,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
                 onPressed: document == null || _operationInProgress
                     ? null
                     : () => _confirmRestore(backup),
-                tooltip: '恢复',
+                tooltip: l10n.restore,
                 icon: const Icon(Icons.restore_rounded),
               ),
               IconButton(
@@ -2330,7 +2477,7 @@ class _AutomaticBackupsPageState extends State<_AutomaticBackupsPage> {
                 onPressed: _operationInProgress
                     ? null
                     : () => _confirmDelete(backup),
-                tooltip: '删除',
+                tooltip: l10n.delete,
                 color: theme.colorScheme.error,
                 icon: const Icon(Icons.delete_outline_rounded),
               ),
@@ -2358,10 +2505,11 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
   Widget build(BuildContext context) {
     final document = widget.document;
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final selection = ArchiveImportSelection(_mode);
     return AlertDialog(
       icon: const Icon(Icons.archive_outlined),
-      title: const Text('导入此存档？'),
+      title: Text(l10n.importArchiveTitleDialog),
       content: SizedBox(
         width: 440,
         child: SingleChildScrollView(
@@ -2369,24 +2517,26 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('导出时间：${_formatHistoryTime(document.exportedAt)}'),
+              Text(
+                l10n.exportedAtLabel(_formatHistoryTime(document.exportedAt)),
+              ),
               const SizedBox(height: 4),
-              Text('来源版本：${document.appVersion}'),
+              Text(l10n.sourceVersionLabel(document.appVersion)),
               const SizedBox(height: 4),
-              Text('历史记录：${document.snapshot.history.length} 条'),
+              Text(l10n.historyCountLabel(document.snapshot.history.length)),
               const Divider(height: 28),
-              Text('导入模式', style: theme.textTheme.titleSmall),
+              Text(l10n.importModeLabel, style: theme.textTheme.titleSmall),
               const SizedBox(height: 10),
               SegmentedButton<ArchiveImportMode>(
                 key: const Key('importModeSelector'),
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: ArchiveImportMode.smartMerge,
-                    label: Text('智能合并'),
+                    label: Text(l10n.smartMergeLabel),
                   ),
                   ButtonSegment(
                     value: ArchiveImportMode.overwrite,
-                    label: Text('完全覆盖'),
+                    label: Text(l10n.overwriteLabel),
                   ),
                 ],
                 selected: {_mode},
@@ -2397,10 +2547,8 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
               const SizedBox(height: 8),
               Text(
                 switch (_mode) {
-                  ArchiveImportMode.smartMerge =>
-                    '保留当前设置；工作区为空时恢复存档工作区；历史记录去重合并。',
-                  ArchiveImportMode.overwrite =>
-                    '当前工作区、行为与外观设置、快捷键和历史记录都将替换为存档内容。',
+                  ArchiveImportMode.smartMerge => l10n.smartMergeDescription,
+                  ArchiveImportMode.overwrite => l10n.overwriteDescription,
                 },
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -2408,7 +2556,7 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                '导入前会自动创建当前数据备份。',
+                l10n.automaticBackupBeforeImport,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -2421,33 +2569,104 @@ class _ArchiveImportDialogState extends State<_ArchiveImportDialog> {
         TextButton(
           key: const Key('cancelImportArchiveButton'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.cancel),
         ),
         FilledButton.icon(
           key: const Key('confirmImportArchiveButton'),
           onPressed: () => Navigator.of(context).pop(selection),
           icon: const Icon(Icons.file_download_outlined),
-          label: const Text('导入'),
+          label: Text(l10n.import),
         ),
       ],
     );
   }
 }
 
-class _AboutSettingsPage extends StatelessWidget {
+class _AboutSettingsPage extends StatefulWidget {
   const _AboutSettingsPage();
 
   @override
+  State<_AboutSettingsPage> createState() => _AboutSettingsPageState();
+}
+
+class _AboutSettingsPageState extends State<_AboutSettingsPage> {
+  final GitHubUpdateService _updateService = const GitHubUpdateService();
+  bool _isCheckingUpdate = false;
+
+  Future<void> _checkForUpdates() async {
+    if (_isCheckingUpdate) return;
+    setState(() => _isCheckingUpdate = true);
+    try {
+      final result = await _updateService.checkForUpdate(appVersion);
+      if (!mounted) return;
+      final l10n = context.l10n;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            icon: Icon(
+              result.updateAvailable
+                  ? Icons.system_update_rounded
+                  : Icons.check_circle_outline_rounded,
+            ),
+            title: Text(
+              result.updateAvailable ? l10n.updateAvailable : l10n.upToDate,
+            ),
+            content: Text(
+              result.updateAvailable
+                  ? l10n.latestVersion(
+                      result.release.version,
+                      result.release.name,
+                    )
+                  : l10n.currentVersionUpToDate(appVersion),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.close),
+              ),
+              if (result.updateAvailable)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                    unawaited(
+                      _openExternalUrl(context, result.release.htmlUrl),
+                    );
+                  },
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: Text(l10n.openReleasePage),
+                ),
+            ],
+          );
+        },
+      );
+    } on UpdateCheckException catch (_) {
+      if (mounted) _showUpdateMessage(context.l10n.checkForUpdatesFailed);
+    } catch (_) {
+      if (mounted) _showUpdateMessage(context.l10n.checkForUpdatesFailed);
+    } finally {
+      if (mounted) setState(() => _isCheckingUpdate = false);
+    }
+  }
+
+  void _showUpdateMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     return _SettingsSubpage(
-      title: '关于',
+      title: l10n.aboutTitle,
       children: [
         ListTile(
           key: const Key('aboutVersion'),
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.info_outline_rounded),
-          title: const Text('版本'),
+          title: Text(l10n.versionTitle),
           trailing: Text(
             appVersion,
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -2456,10 +2675,29 @@ class _AboutSettingsPage extends StatelessWidget {
           ),
         ),
         ListTile(
+          key: const Key('aboutCheckForUpdates'),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.system_update_outlined),
+          title: Text(l10n.checkForUpdatesTitle),
+          subtitle: Text(
+            _isCheckingUpdate
+                ? l10n.checkingForUpdates
+                : l10n.checkGitHubReleases,
+          ),
+          trailing: _isCheckingUpdate
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
+          onTap: _isCheckingUpdate ? null : _checkForUpdates,
+        ),
+        ListTile(
           key: const Key('aboutAuthor'),
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.person_outline_rounded),
-          title: const Text('作者'),
+          title: Text(l10n.authorTitle),
           subtitle: const Text('https://github.com/JO-Beacon/'),
           trailing: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -2475,7 +2713,7 @@ class _AboutSettingsPage extends StatelessWidget {
           key: const Key('aboutProjectLicense'),
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.description_outlined),
-          title: const Text('项目许可证'),
+          title: Text(l10n.projectLicenseTitle),
           subtitle: const Text('Apache License 2.0'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => _openLicenseText(
@@ -2488,12 +2726,12 @@ class _AboutSettingsPage extends StatelessWidget {
           key: const Key('aboutFontLicense'),
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.font_download_outlined),
-          title: const Text('思源黑体许可证'),
+          title: Text(l10n.sourceHanSansLicenseTitle),
           subtitle: const Text('SIL Open Font License 1.1'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => _openLicenseText(
             context,
-            title: '思源黑体许可证',
+            title: l10n.sourceHanSansLicenseTitle,
             assetPath: 'assets/licenses/SourceHanSans-OFL-1.1.txt',
           ),
         ),
@@ -2501,12 +2739,12 @@ class _AboutSettingsPage extends StatelessWidget {
           key: const Key('aboutOpenSourceLicenses'),
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.inventory_2_outlined),
-          title: const Text('第三方开源许可证'),
-          subtitle: const Text('Flutter 及第三方依赖'),
+          title: Text(l10n.openSourceLicensesTitle),
+          subtitle: Text(l10n.openSourceLicensesSubtitle),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => showLicensePage(
             context: context,
-            applicationName: 'JO-引号转换',
+            applicationName: l10n.appName,
             applicationVersion: appVersion,
             applicationLegalese: 'Copyright (C) 2026 $appAuthor',
             applicationIcon: const Icon(Icons.format_quote_rounded, size: 42),
@@ -2553,7 +2791,7 @@ Future<void> _openExternalUrl(BuildContext context, Uri url) async {
   if (opened || !context.mounted) return;
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('无法打开链接')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.unableToOpenLink)));
 }
 
 Future<void> _openLicenseText(
@@ -2615,7 +2853,9 @@ class _PaletteChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
+    final paletteName = l10n.paletteName(_paletteLabel(context, palette));
     final checkColor = palette == AppPalette.yellow
         ? const Color(0xFF2B2100)
         : Colors.white;
@@ -2623,14 +2863,14 @@ class _PaletteChoice extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: '${palette.label}色配色',
+      label: paletteName,
       child: SizedBox(
         width: 52,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Tooltip(
-              message: '${palette.label}色配色',
+              message: paletteName,
               child: InkResponse(
                 key: Key('palette_${palette.name}'),
                 onTap: onSelected,
@@ -2663,7 +2903,10 @@ class _PaletteChoice extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 5),
-            Text(palette.label, style: theme.textTheme.bodySmall),
+            Text(
+              _paletteLabel(context, palette),
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ),
       ),
@@ -2696,6 +2939,7 @@ class _EditorActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(6),
     );
@@ -2722,7 +2966,7 @@ class _EditorActions extends StatelessWidget {
             ).colorScheme.error.withValues(alpha: 0.38),
           ),
           icon: const Icon(Icons.delete_outline_rounded, size: 16),
-          label: const Text('清空', maxLines: 1),
+          label: Text(l10n.clear, maxLines: 1),
         ),
         const SizedBox(width: 6),
         FilledButton.icon(
@@ -2737,7 +2981,7 @@ class _EditorActions extends StatelessWidget {
             shape: buttonShape,
           ),
           icon: const Icon(Icons.sync_alt_rounded, size: 16),
-          label: const Text('转换', maxLines: 1),
+          label: Text(l10n.convert, maxLines: 1),
         ),
       ],
     );
@@ -2751,6 +2995,7 @@ class _CopyAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return OutlinedButton.icon(
       key: const Key('copyButton'),
       onPressed: onCopy,
@@ -2763,7 +3008,7 @@ class _CopyAction extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
       icon: const Icon(Icons.content_copy_rounded, size: 16),
-      label: const Text('复制', maxLines: 1),
+      label: Text(l10n.copy, maxLines: 1),
     );
   }
 }
@@ -2789,32 +3034,43 @@ class _EditorPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
           height: 40,
-          child: Row(
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (titleActions != null) ...[
-                const SizedBox(width: 8),
-                titleActions!,
-              ],
-              const Spacer(),
-              Text(
-                '$characterCount 字符',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final showCharacterCount = constraints.maxWidth >= 480;
+              return Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (titleActions != null) ...[
+                    const SizedBox(width: 8),
+                    titleActions!,
+                  ],
+                  const Spacer(),
+                  if (showCharacterCount)
+                    Text(
+                      l10n.characterCount(characterCount),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 6),
