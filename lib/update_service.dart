@@ -122,7 +122,7 @@ Future<String> _fetchJson(Uri uri) async {
         .timeout(const Duration(seconds: 15));
     request.headers
       ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
-      ..set(HttpHeaders.userAgentHeader, 'JO-Quote-Converter');
+      ..set(HttpHeaders.userAgentHeader, 'JO-Symbol-Converter');
     final response = await request.close().timeout(const Duration(seconds: 15));
     final body = await response.transform(utf8.decoder).join();
     if (response.statusCode != HttpStatus.ok) {

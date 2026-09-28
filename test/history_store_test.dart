@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jo_quote_converter/history_store.dart';
+import 'package:jo_symbol_converter/history_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -28,7 +28,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     temporaryDirectory = await Directory.systemTemp.createTemp(
-      'jo_quote_converter_history_test_',
+      'jo_symbol_converter_history_test_',
     );
     databasePath = p.join(temporaryDirectory.path, 'history.db');
     previousDatabasePath = p.join(

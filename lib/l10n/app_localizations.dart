@@ -97,8 +97,10 @@ class _AppLocalizationsDelegate
 }
 
 const Map<String, String> _zhMessages = {
-  'appTitle': 'JO-引号转换',
-  'appName': 'JO-引号转换',
+  'appTitle': 'JO-符号转换',
+  'appName': 'JO-符号转换',
+  'toolQuote': '转换引号',
+  'toolComma': '转换逗号',
   'history': '历史记录',
   'settings': '设置',
   'source': '原文',
@@ -168,9 +170,9 @@ const Map<String, String> _zhMessages = {
   'behaviorTitle': '行为',
   'behaviorSubtitle': '转换规则与 Markdown 代码排除',
   'excludeMarkdownCodeTitle': '排除 Markdown 代码',
-  'excludeMarkdownCodeSubtitle': '保留围栏代码块和行内代码中的原始引号',
+  'excludeMarkdownCodeSubtitle': '保留围栏代码块和行内代码中的原始符号',
   'useHeuristicsTitle': '启发式判断',
-  'useHeuristicsSubtitle': '尽量保留缩写、所有格、单位和年代中的撇号',
+  'useHeuristicsSubtitle': '尽量识别缩写、所有格、单位、年代和千分位等歧义写法',
   'shortcutsTitle': '快捷键',
   'shortcutsSubtitleEnabled': '已启用',
   'shortcutsSubtitleDisabled': '已关闭',
@@ -187,7 +189,7 @@ const Map<String, String> _zhMessages = {
   'automaticBackupsSubtitle': '查看、恢复或清理导入前备份',
   'archiveNotesSectionTitle': '存档说明',
   'archiveNotes':
-      '存档使用 .joquoteconverter 后缀并采用 ZIP Deflate 压缩。存档包含原文、转换结果、设置和历史记录，不加密，请妥善保管。确认导入后，应用会先在本机自动保存一份导入前备份。',
+      '存档使用 .josymbolconverter 后缀并采用 ZIP Deflate 压缩；旧版 .joquoteconverter 存档仍可导入。存档包含原文、转换结果、设置和历史记录，不加密，请妥善保管。确认导入后，应用会先在本机自动保存一份导入前备份。',
   'automaticBackupsLoadFailed': '自动备份读取失败',
   'restoreAutomaticBackupTitle': '恢复此自动备份？',
   'restoreAutomaticBackupContent':
@@ -220,7 +222,7 @@ const Map<String, String> _zhMessages = {
   'archiveImportFailedRolledBack': '存档导入失败，已恢复导入前的数据',
   'automaticBackupRestored': '自动备份已恢复',
   'aboutTitle': '关于',
-  'aboutSubtitle': 'JO-引号转换 {version}',
+  'aboutSubtitle': 'JO-符号转换 {version}',
   'versionTitle': '版本',
   'checkForUpdatesTitle': '检查更新',
   'checkingForUpdates': '正在检查 GitHub 最新版本',
@@ -239,8 +241,10 @@ const Map<String, String> _zhMessages = {
 };
 
 const Map<String, String> _enMessages = {
-  'appTitle': 'JO Quote Converter',
-  'appName': 'JO Quote Converter',
+  'appTitle': 'JO Symbol Converter',
+  'appName': 'JO Symbol Converter',
+  'toolQuote': 'Quotes',
+  'toolComma': 'Commas',
   'history': 'History',
   'settings': 'Settings',
   'source': 'Source',
@@ -315,10 +319,10 @@ const Map<String, String> _enMessages = {
   'behaviorSubtitle': 'Conversion rules and Markdown code exclusions',
   'excludeMarkdownCodeTitle': 'Exclude Markdown code',
   'excludeMarkdownCodeSubtitle':
-      'Keep original quotes in fenced code blocks and inline code',
+      'Keep original symbols in fenced code blocks and inline code',
   'useHeuristicsTitle': 'Heuristics',
   'useHeuristicsSubtitle':
-      'Preserve apostrophes in contractions, possessives, units, and decades when possible',
+      'Try to identify ambiguous contractions, possessives, units, decades, and digit separators',
   'shortcutsTitle': 'Shortcuts',
   'shortcutsSubtitleEnabled': 'Enabled',
   'shortcutsSubtitleDisabled': 'Disabled',
@@ -336,7 +340,7 @@ const Map<String, String> _enMessages = {
   'automaticBackupsSubtitle': 'View, restore, or clean up pre-import backups',
   'archiveNotesSectionTitle': 'Archive notes',
   'archiveNotes':
-      'Archives use the .joquoteconverter extension and ZIP Deflate compression. They contain the source text, converted result, settings, and history, and are not encrypted; keep them safe. Before an import completes, the app automatically saves a pre-import backup on this device.',
+      'Archives use the .josymbolconverter extension and ZIP Deflate compression; legacy .joquoteconverter archives can still be imported. They contain the source text, converted result, settings, and history, and are not encrypted; keep them safe. Before an import completes, the app automatically saves a pre-import backup on this device.',
   'automaticBackupsLoadFailed': 'Failed to load automatic backups',
   'restoreAutomaticBackupTitle': 'Restore this automatic backup?',
   'restoreAutomaticBackupContent':
@@ -375,7 +379,7 @@ const Map<String, String> _enMessages = {
       'Archive import failed; pre-import data restored',
   'automaticBackupRestored': 'Automatic backup restored',
   'aboutTitle': 'About',
-  'aboutSubtitle': 'JO Quote Converter {version}',
+  'aboutSubtitle': 'JO Symbol Converter {version}',
   'versionTitle': 'Version',
   'checkForUpdatesTitle': 'Check for updates',
   'checkingForUpdates': 'Checking GitHub for the latest version',

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jo_quote_converter/update_service.dart';
+import 'package:jo_symbol_converter/update_service.dart';
 
 void main() {
   test('parses a GitHub release and detects a newer build', () async {

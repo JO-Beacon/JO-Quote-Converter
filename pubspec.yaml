@@ -1,5 +1,5 @@
-name: jo_quote_converter
-description: "JO-引号转换：本地英文引号转中文引号工具。"
+name: jo_symbol_converter
+description: "JO-符号转换：本地英文引号、逗号转中文全角符号工具。"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.0.4+4
+version: 0.0.5+5
 
 environment:
   sdk: ^3.12.1
@@ -71,7 +71,7 @@ flutter:
 
   assets:
     - LICENSE
-    - assets/images/jo_quote_converter_icon.png
+    - assets/images/jo_symbol_converter_icon.png
     - assets/licenses/SourceHanSans-OFL-1.1.txt
 
   fonts:

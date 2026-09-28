@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "JO-Beacon" "\0"
-            VALUE "FileDescription", "JO-引号转换" "\0"
+            VALUE "FileDescription", "JO-符号转换" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "jo_quote_converter" "\0"
+            VALUE "InternalName", "jo_symbol_converter" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 JO-Beacon" "\0"
-            VALUE "OriginalFilename", "jo_quote_converter.exe" "\0"
-            VALUE "ProductName", "JO-引号转换" "\0"
+            VALUE "OriginalFilename", "jo_symbol_converter.exe" "\0"
+            VALUE "ProductName", "JO-符号转换" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

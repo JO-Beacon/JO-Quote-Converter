@@ -1,4 +1,4 @@
-package io.github.jobeacon.joquoteconverter
+package io.github.jobeacon.josymbolconverter
 
 import io.flutter.embedding.android.FlutterActivity
 

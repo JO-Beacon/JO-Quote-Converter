@@ -7,10 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'archive_service.dart';
+import 'converter_tool.dart';
 import 'draft_store.dart';
 import 'history_store.dart';
 import 'l10n/app_localizations.dart';
-import 'quote_converter.dart';
+import 'text_converter.dart';
 import 'update_service.dart';
 import 'windows_data_migrator.dart';
 
@@ -18,7 +19,7 @@ extension AppLocalizationsX on BuildContext {
   dynamic get l10n => AppLocalizations.of(this);
 }
 
-const appVersion = '0.0.4+4';
+const appVersion = '0.0.5+5';
 const appAuthor = 'JO-Beacon';
 final appAuthorUrl = Uri.parse('https://github.com/JO-Beacon/');
 
@@ -47,6 +48,11 @@ extension AppPaletteStyle on AppPalette {
 Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    await migratePreviousWindowsAppData();
+  } catch (_) {
+    // Migration failure must not prevent the editor from opening.
+  }
+  try {
     await migratePreviousWindowsPreferences();
   } catch (_) {
     // Migration failure must not prevent the editor from opening.
@@ -57,7 +63,8 @@ Future<void> main(List<String> arguments) async {
 String? _startupArchivePath(Iterable<String> arguments) {
   if (!Platform.isWindows) return null;
   for (final argument in arguments) {
-    if (argument.toLowerCase().endsWith('.$archiveExtension')) {
+    final lower = argument.toLowerCase();
+    if (archiveExtensions.any((extension) => lower.endsWith('.$extension'))) {
       return argument;
     }
   }
@@ -283,6 +290,7 @@ class _ConverterPageState extends State<ConverterPage> {
   bool _excludeMarkdownCode = true;
   bool _useHeuristics = true;
   bool _keyboardShortcutsEnabled = true;
+  ConverterTool _activeTool = ConverterTool.quote;
   List<ConversionHistoryEntry> _history = [];
 
   @override
@@ -413,7 +421,8 @@ class _ConverterPageState extends State<ConverterPage> {
   }
 
   Future<void> _convert() async {
-    final result = QuoteConverter.convert(
+    final result = TextConverter.convert(
+      _activeTool,
       _inputController.text,
       excludeMarkdownCode: _excludeMarkdownCode,
       useHeuristics: _useHeuristics,
@@ -810,7 +819,7 @@ class _ConverterPageState extends State<ConverterPage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(6),
                     child: Image.asset(
-                      'assets/images/jo_quote_converter_icon.png',
+                      'assets/images/jo_symbol_converter_icon.png',
                       width: 27,
                       height: 27,
                     ),
@@ -845,32 +854,78 @@ class _ConverterPageState extends State<ConverterPage> {
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     ),
                   )
-                : Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      isCompact ? 12 : 24,
-                      6,
-                      isCompact ? 12 : 24,
-                      isCompact ? 12 : 20,
-                    ),
-                    child: isCompact
-                        ? Column(
-                            children: [
-                              Expanded(child: _buildInputEditor()),
-                              const SizedBox(height: 12),
-                              Expanded(child: _buildOutputEditor()),
-                            ],
-                          )
-                        : Row(
-                            children: [
-                              Expanded(child: _buildInputEditor()),
-                              const SizedBox(width: 16),
-                              Expanded(child: _buildOutputEditor()),
-                            ],
-                          ),
+                : Row(
+                    children: [
+                      if (!isCompact) ...[
+                        NavigationRail(
+                          selectedIndex: _activeTool.index,
+                          onDestinationSelected: _selectTool,
+                          labelType: NavigationRailLabelType.all,
+                          destinations: [
+                            NavigationRailDestination(
+                              icon: const Icon(Icons.format_quote_rounded),
+                              label: Text(l10n.toolQuote),
+                            ),
+                            NavigationRailDestination(
+                              icon: const Icon(Icons.notes_rounded),
+                              label: Text(l10n.toolComma),
+                            ),
+                          ],
+                        ),
+                        const VerticalDivider(width: 1),
+                      ],
+                      Expanded(child: _buildWorkspace(isCompact)),
+                    ],
                   ),
           ),
+          bottomNavigationBar: isCompact && !_isRestoringDraft
+              ? NavigationBar(
+                  selectedIndex: _activeTool.index,
+                  onDestinationSelected: _selectTool,
+                  destinations: [
+                    NavigationDestination(
+                      icon: const Icon(Icons.format_quote_rounded),
+                      label: l10n.toolQuote,
+                    ),
+                    NavigationDestination(
+                      icon: const Icon(Icons.notes_rounded),
+                      label: l10n.toolComma,
+                    ),
+                  ],
+                )
+              : null,
         ),
       ),
+    );
+  }
+
+  void _selectTool(int index) {
+    setState(() => _activeTool = ConverterTool.values[index]);
+  }
+
+  Widget _buildWorkspace(bool isCompact) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        isCompact ? 12 : 24,
+        6,
+        isCompact ? 12 : 24,
+        isCompact ? 12 : 20,
+      ),
+      child: isCompact
+          ? Column(
+              children: [
+                Expanded(child: _buildInputEditor()),
+                const SizedBox(height: 12),
+                Expanded(child: _buildOutputEditor()),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: _buildInputEditor()),
+                const SizedBox(width: 16),
+                Expanded(child: _buildOutputEditor()),
+              ],
+            ),
     );
   }
 

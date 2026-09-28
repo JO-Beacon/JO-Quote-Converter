@@ -1,8 +1,10 @@
 # JO-Quote-Converter
 
-> 简体中文: [README.md](README.md)
+> Simplified Chinese: [README.md](README.md)
 
-JO-Quote-Converter is a local Flutter text tool that converts English straight quotes into Chinese curly quotes. It targets Windows and Android. Text processing and draft saving happen locally on the device; only manual update checks access GitHub Releases.
+> The repository name remains `JO-Quote-Converter`; the app name, Dart package name, Windows executable, and Android application identifier have all been renamed to match “JO Symbol Converter”.
+
+JO-Quote-Converter is a local Flutter text tool that converts English straight quotes into Chinese curly quotes and English half-width commas into the Chinese full-width comma. It targets Windows and Android. Text processing and draft saving happen locally on the device; only manual update checks access GitHub Releases.
 
 Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 
@@ -13,7 +15,9 @@ Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 - Optional heuristic detection that tries to identify ambiguous apostrophes such as contractions, possessives, length units, and decade abbreviations; the result is not guaranteed for every ambiguous text
 - Optional mechanical pairing mode: with heuristics off, single and double quotes are paired strictly in left, right, left, right order
 - Avoids re-converting Chinese curly quotes that are already present
-- Optional Markdown exclusion that keeps original quotes in fenced code blocks and inline code
+- Converts English half-width commas `,` into the Chinese full-width comma `，`
+- Optional heuristic detection that keeps digit group separators such as `1,000` and `12,345,678` when converting commas
+- Optional Markdown exclusion that keeps original symbols in fenced code blocks and inline code
 - Copy converted result and clear text
 - Follow-system, light, and dark appearance modes
 - Six color themes: red, yellow, green, blue, purple, and gray; gray is the default
@@ -25,26 +29,28 @@ Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 - Restore source text and converted result from history into the workspace, with confirmation before overwriting a non-empty workspace
 - Delete individual history entries with confirmation
 - Clear all history entries in bulk with confirmation
-- Export workspace, settings, and history to a compressed `.joquoteconverter` archive and import it between Windows and Android
+- Export workspace, settings, and history to a compressed `.josymbolconverter` archive and import it between Windows and Android (legacy `.joquoteconverter` archives can still be imported)
 - Validate archive integrity before import, then choose smart merge or full overwrite; smart merge keeps a non-empty workspace and current settings, and merges history without duplicates
-- Windows installed builds associate `.joquoteconverter` archives so double-clicking an archive opens the app with import-mode selection
+- Windows installed builds associate `.josymbolconverter` and `.joquoteconverter` archives so double-clicking an archive opens the app with import-mode selection
 - Before import completes, automatically create a pre-import backup in the app's local data directory; restore it if the import fails
 - Manage automatic backups in Settings: view time, version, history count, and file size; restore, delete individually, or clear all
 - About page supports manual checking for the latest GitHub Release and opens the release page when an update is available
 - Settings use categorized lists for language, appearance, behavior, keyboard shortcuts, data and archives, and about; UI language supports Simplified Chinese and English, defaulting to Simplified Chinese
 - Windows supports `Ctrl+Enter` to convert the current text, and keyboard shortcuts can be disabled from Shortcut Settings
+- The sidebar switches between “Quotes” and “Commas”; desktop wide screens use a left navigation rail and narrow screens automatically use bottom navigation
 - Desktop wide-screen workspace uses a left-right split; narrow screens automatically switch to a top-bottom layout
 
 ## Usage
 
 1. Enter or paste text into the “Source” area.
-2. Open “Settings” from the top-right corner and configure “Exclude Markdown code” and “Heuristic detection” as needed. The two options are independent.
-3. Tap “Convert” and view the result on the right or below.
-4. Tap the copy button to copy the converted result.
+2. Choose “Quotes” or “Commas” from the sidebar (bottom navigation on narrow screens).
+3. Open “Settings” from the top-right corner and configure “Exclude Markdown code” and “Heuristic detection” as needed. The two options are independent.
+4. Tap “Convert” and view the result on the right or below.
+5. Tap the copy button to copy the converted result.
 
 On Windows, press `Ctrl+Enter` to convert; disable keyboard shortcuts in Settings if they are not needed. The history screen supports searching, restoring, deleting individual entries, and clearing all entries.
 
-In “Settings → Data & Archives”, export or import `.joquoteconverter` files. On Android, exporting opens the system file-save UI to choose a location. In the Windows installed build, double-clicking a `.joquoteconverter` file also opens the app with the same import-mode choices. Archives use ZIP Deflate compression, contain the workspace, settings, and history, and use SHA-256 to verify content. Archives are not encrypted, so their contents can be extracted and read; treat them as ordinary data backup files and keep them safe.
+In “Settings → Data & Archives”, export or import `.josymbolconverter` files; legacy `.joquoteconverter` archives can still be imported. On Android, exporting opens the system file-save UI to choose a location. In the Windows installed build, double-clicking a `.joquoteconverter` file also opens the app with the same import-mode choices. Archives use ZIP Deflate compression, contain the workspace, settings, and history, and use SHA-256 to verify content. Archives are not encrypted, so their contents can be extracted and read; treat them as ordinary data backup files and keep them safe.
 
 Drafts are saved automatically as text changes. The app also writes the current state once when the window closes normally, the app moves to the background, or the app exits.
 
@@ -54,7 +60,7 @@ The app does not require an account, does not upload text, and has no backend se
 
 Pre-import automatic backups are stored locally in the app support directory under `backups` and are never uploaded. View, restore, or clean them in “Settings → Data & Archives → Automatic Backups”. Restoring an automatic backup overwrites the current workspace, settings, and all history, and makes another backup of the current data before restoring. Smart merge keeps a non-empty workspace and current settings; for history, it keeps existing entries and skips entries whose source, result, and time are exactly the same. Full overwrite replaces the workspace, settings, and all history with the archive contents.
 
-On Windows, when the new data directory is first used, drafts, settings, and history from the old `com.localtools` directory are migrated once to the `JO-Beacon` directory. Migration does not delete old data.
+On Windows, when the new data directory is first used, drafts, settings, and history from the old `com.localtools` directory are migrated once to the `JO-Beacon` directory. After the app display name changed to “JO Symbol Converter”, the first launch also copies data from the previous `JO-Beacon/JO-引号转换` directory into the new `JO-Beacon/JO-符号转换` directory; existing files are not overwritten, and neither the old data nor the old directory is deleted. None of these migrations delete old data.
 
 ## Development
 
@@ -80,7 +86,11 @@ Some Windows native build tools have limited support for project paths containin
 lib/
   main.dart             App UI, theme, and draft restoration
   archive_service.dart  Archive compression, verification, import/export, and automatic backups
-  quote_converter.dart  Quote conversion and Markdown code exclusion
+  converter_tool.dart    Selectable conversion types (quotes / commas)
+  text_converter.dart    Dispatches conversion based on the selected type
+  quote_converter.dart   Quote conversion
+  comma_converter.dart   Comma conversion
+  markdown_code_mask.dart  Marks Markdown code regions
   draft_store.dart      Local draft storage
   history_store.dart    SQLite history storage and legacy data migration
   update_service.dart   GitHub Release update checks

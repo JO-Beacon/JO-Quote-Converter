@@ -1,6 +1,22 @@
 # 更新日志
 
-本文件记录 JO-引号转换各版本的重要变更。
+本文件记录 JO-符号转换各版本的重要变更。
+
+## 0.0.5+5
+
+### 新增
+
+- 新增“逗号转换”，可将英文半角逗号 `,` 转换为中文全角逗号 `，`；启发式判断开启时尽量保留 `1,000`、`12,345,678` 等千分位分隔符。
+- 主界面新增侧栏，可在“转换引号”和“转换逗号”之间切换；桌面宽屏使用左侧导航栏，窄屏自动使用底部导航。两个转换类型共用同一工作区、草稿和历史记录。
+
+### 调整
+
+- 应用显示名称由“JO-引号转换”改为“JO-符号转换”。
+- Dart 包名由 `jo_quote_converter` 改为 `jo_symbol_converter`；Windows 可执行文件改为 `jo_symbol_converter.exe`，安装目录改为 `JO-Symbol-Converter`。
+- Android 应用标识由 `io.github.jobeacon.joquoteconverter` 改为 `io.github.jobeacon.josymbolconverter`。这是新的应用标识，Android 用户无法覆盖升级，需在旧版中先导出存档，再在新版中导入。
+- 存档扩展名由 `.joquoteconverter` 改为 `.josymbolconverter`，内部格式标识改为 `JO-Symbol-Converter`；旧 `.joquoteconverter` 存档和旧格式仍可导入，安装程序同时关联两种扩展名。
+- 新建的自动备份使用新扩展名，已有的旧扩展名备份仍可查看、恢复和删除。
+- Windows 安装程序升级时改为安装到新的 `JO-Symbol-Converter` 目录；应用显示名称改名后，首次启动会把旧 `JO-Beacon/JO-引号转换` 数据目录复制到新的 `JO-Beacon/JO-符号转换` 目录。
 
 ## 0.0.4+4
 

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jo_quote_converter/archive_service.dart';
-import 'package:jo_quote_converter/draft_store.dart';
-import 'package:jo_quote_converter/history_store.dart';
-import 'package:jo_quote_converter/main.dart';
+import 'package:jo_symbol_converter/archive_service.dart';
+import 'package:jo_symbol_converter/draft_store.dart';
+import 'package:jo_symbol_converter/history_store.dart';
+import 'package:jo_symbol_converter/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -32,6 +32,57 @@ void main() {
           .widget<OutlinedButton>(find.byKey(const Key('copyButton')))
           .onPressed,
       isNotNull,
+    );
+  });
+
+  testWidgets('switches between quote and comma conversion from the sidebar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    expect(find.text('转换引号'), findsOneWidget);
+    expect(find.text('转换逗号'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'a,b "c"');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'a,b “c”',
+    );
+
+    await tester.tap(find.text('转换逗号'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'a，b "c"',
+    );
+  });
+
+  testWidgets('uses bottom navigation for tools on narrow screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    await tester.tap(find.text('转换逗号'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'x,y');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'x，y',
     );
   });
 

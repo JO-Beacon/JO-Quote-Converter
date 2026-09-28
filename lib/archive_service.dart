@@ -12,8 +12,10 @@ import 'package:path_provider/path_provider.dart';
 import 'draft_store.dart';
 import 'history_store.dart';
 
-const archiveExtension = 'joquoteconverter';
-const archiveMimeType = 'application/x-jo-quote-converter-archive';
+const archiveExtension = 'josymbolconverter';
+const legacyArchiveExtension = 'joquoteconverter';
+const archiveExtensions = <String>[archiveExtension, legacyArchiveExtension];
+const archiveMimeType = 'application/x-jo-symbol-converter-archive';
 
 typedef ArchiveFilePicker =
     Future<XFile?> Function(List<XTypeGroup> acceptedTypeGroups);
@@ -147,7 +149,7 @@ class ArchiveService {
       ),
     );
     final manifestBytes = _jsonBytes({
-      'format': 'JO-Quote-Converter',
+      'format': 'JO-Symbol-Converter',
       'formatVersion': formatVersion,
       'appVersion': appVersion,
       'exportedAt': exportTime.toIso8601String(),
@@ -240,7 +242,8 @@ class ArchiveService {
     }
 
     final manifest = _decodeObject(files[_manifestName]!, '存档清单');
-    if (manifest['format'] != 'JO-Quote-Converter' ||
+    final format = manifest['format'];
+    if ((format != 'JO-Quote-Converter' && format != 'JO-Symbol-Converter') ||
         manifest['formatVersion'] != formatVersion) {
       throw const ArchiveFormatException('不支持此存档版本。');
     }
@@ -346,7 +349,7 @@ class ArchiveService {
     DateTime? now,
   }) async {
     final exportTime = now ?? DateTime.now();
-    final name = 'JO-引号转换-${_fileTimestamp(exportTime)}.$archiveExtension';
+    final name = 'JO-符号转换-${_fileTimestamp(exportTime)}.$archiveExtension';
     final data = encode(
       snapshot: snapshot,
       appVersion: appVersion,
@@ -358,7 +361,7 @@ class ArchiveService {
     final location = await getSaveLocation(
       acceptedTypeGroups: const [
         XTypeGroup(
-          label: 'JO-引号转换存档',
+          label: 'JO-符号转换存档',
           extensions: [archiveExtension],
           mimeTypes: [archiveMimeType],
         ),
@@ -379,25 +382,29 @@ class ArchiveService {
   Future<ArchiveDocument?> pickAndDecode() async {
     final file = await _filePicker(
       _isAndroid
-          ? const [XTypeGroup(label: 'JO-引号转换存档')]
+          ? const [XTypeGroup(label: 'JO-符号转换存档')]
           : const [
               XTypeGroup(
-                label: 'JO-引号转换存档',
-                extensions: [archiveExtension],
+                label: 'JO-符号转换存档',
+                extensions: archiveExtensions,
                 mimeTypes: [archiveMimeType],
               ),
             ],
     );
     if (file == null) return null;
     if (!_isAndroid && !_hasArchiveExtension(file.name)) {
-      throw const ArchiveFormatException('请选择 .joquoteconverter 存档文件。');
+      throw const ArchiveFormatException(
+        '请选择 .josymbolconverter 或 .joquoteconverter 存档文件。',
+      );
     }
     return decode(await file.readAsBytes());
   }
 
   Future<ArchiveDocument> decodeFilePath(String path) async {
     if (!_hasArchiveExtension(path)) {
-      throw const ArchiveFormatException('请选择 .joquoteconverter 存档文件。');
+      throw const ArchiveFormatException(
+        '请选择 .josymbolconverter 或 .joquoteconverter 存档文件。',
+      );
     }
     return decode(await File(path).readAsBytes());
   }
@@ -434,8 +441,7 @@ class ArchiveService {
 
     final backups = <AutomaticBackup>[];
     await for (final entity in backupDirectory.list(followLinks: false)) {
-      if (entity is! File ||
-          !entity.path.toLowerCase().endsWith('.$archiveExtension')) {
+      if (entity is! File || !_hasArchiveExtension(entity.path)) {
         continue;
       }
       final stat = await entity.stat();
@@ -493,8 +499,7 @@ class ArchiveService {
   }
 
   Future<File> _automaticBackupFile(String fileName) async {
-    if (fileName != p.basename(fileName) ||
-        !fileName.toLowerCase().endsWith('.$archiveExtension')) {
+    if (fileName != p.basename(fileName) || !_hasArchiveExtension(fileName)) {
       throw ArgumentError.value(fileName, 'fileName', '无效的备份文件名');
     }
     final backupDirectory = await _backupDirectory();
@@ -544,6 +549,8 @@ class ArchiveService {
   static String _ensureExtension(String path) =>
       _hasArchiveExtension(path) ? path : '$path.$archiveExtension';
 
-  static bool _hasArchiveExtension(String path) =>
-      path.toLowerCase().endsWith('.$archiveExtension');
+  static bool _hasArchiveExtension(String path) {
+    final lower = path.toLowerCase();
+    return archiveExtensions.any((extension) => lower.endsWith('.$extension'));
+  }
 }

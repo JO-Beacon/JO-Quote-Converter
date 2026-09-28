@@ -5,9 +5,9 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jo_quote_converter/archive_service.dart';
-import 'package:jo_quote_converter/draft_store.dart';
-import 'package:jo_quote_converter/history_store.dart';
+import 'package:jo_symbol_converter/archive_service.dart';
+import 'package:jo_symbol_converter/draft_store.dart';
+import 'package:jo_symbol_converter/history_store.dart';
 
 void main() {
   late Directory temporaryDirectory;
@@ -15,7 +15,7 @@ void main() {
 
   setUp(() async {
     temporaryDirectory = await Directory.systemTemp.createTemp(
-      'jo_quote_converter_archive_test_',
+      'jo_symbol_converter_archive_test_',
     );
     service = ArchiveService(
       supportDirectoryProvider: () async => temporaryDirectory,
@@ -164,7 +164,7 @@ void main() {
     expect(await desktopService.pickAndDecode(), isNull);
     expect(receivedGroups, hasLength(1));
     expect(receivedGroups!.single.allowsAny, isFalse);
-    expect(receivedGroups!.single.extensions, [archiveExtension]);
+    expect(receivedGroups!.single.extensions, archiveExtensions);
     expect(receivedGroups!.single.mimeTypes, [archiveMimeType]);
   });
 
@@ -187,10 +187,54 @@ void main() {
         isA<ArchiveFormatException>().having(
           (error) => error.message,
           'message',
-          '请选择 .joquoteconverter 存档文件。',
+          '请选择 .josymbolconverter 或 .joquoteconverter 存档文件。',
         ),
       ),
     );
+  });
+
+  test('accepts a legacy .joquoteconverter file path', () async {
+    final archiveFile = File(
+      '${temporaryDirectory.path}${Platform.pathSeparator}'
+      'legacy.joquoteconverter',
+    );
+    await archiveFile.writeAsBytes(
+      service.encode(snapshot: _snapshot(), appVersion: '0.0.3+3'),
+    );
+
+    final document = await service.decodeFilePath(archiveFile.path);
+
+    expect(document.snapshot.history, hasLength(2));
+  });
+
+  test('accepts archives written with the legacy internal format id', () {
+    final original = ZipDecoder().decodeBytes(
+      service.encode(snapshot: _snapshot(), appVersion: '0.0.2+2'),
+    );
+    final files = {
+      for (final file in original.files.where((file) => file.isFile))
+        file.name: file.readBytes()!,
+    };
+    final manifest =
+        jsonDecode(utf8.decode(files['manifest.json']!))
+            as Map<String, dynamic>;
+    manifest['format'] = 'JO-Quote-Converter';
+    files['manifest.json'] = utf8.encode(jsonEncode(manifest));
+    final checksums =
+        jsonDecode(utf8.decode(files['checksums.json']!))
+            as Map<String, dynamic>;
+    (checksums['files'] as Map<String, dynamic>)['manifest.json'] = sha256
+        .convert(files['manifest.json']!)
+        .toString();
+    files['checksums.json'] = utf8.encode(jsonEncode(checksums));
+    final archive = Archive();
+    for (final entry in files.entries) {
+      archive.add(ArchiveFile.bytes(entry.key, entry.value));
+    }
+
+    final decoded = service.decode(ZipEncoder().encodeBytes(archive));
+
+    expect(decoded.snapshot.history, hasLength(2));
   });
 
   test('decodes a Windows-associated archive file path', () async {
@@ -224,7 +268,7 @@ void main() {
           isA<ArchiveFormatException>().having(
             (error) => error.message,
             'message',
-            '请选择 .joquoteconverter 存档文件。',
+            '请选择 .josymbolconverter 或 .joquoteconverter 存档文件。',
           ),
         ),
       );
@@ -268,7 +312,7 @@ void main() {
     );
 
     expect(exported, isTrue);
-    expect(savedName, 'JO-引号转换-20260813-143000-000.joquoteconverter');
+    expect(savedName, 'JO-符号转换-20260813-143000-000.josymbolconverter');
     expect(androidService.decode(savedBytes!).snapshot.history, hasLength(2));
   });
 
@@ -303,7 +347,7 @@ void main() {
         file.path,
         contains('${Platform.pathSeparator}backups${Platform.pathSeparator}'),
       );
-      expect(file.path, endsWith('.joquoteconverter'));
+      expect(file.path, endsWith('.josymbolconverter'));
       expect(
         service.decode(await file.readAsBytes()).snapshot.history,
         hasLength(2),

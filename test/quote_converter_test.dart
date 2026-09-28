@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:jo_quote_converter/quote_converter.dart';
+import 'package:jo_symbol_converter/quote_converter.dart';
 
 void main() {
   group('QuoteConverter', () {
