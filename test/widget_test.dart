@@ -25,7 +25,7 @@ void main() {
 
     expect(
       tester.widget<TextField>(find.byType(TextField).last).controller?.text,
-      'He said, “Hello.”',
+      'He said， “Hello.”',
     );
     expect(
       tester
@@ -35,16 +35,33 @@ void main() {
     );
   });
 
-  testWidgets('switches between quote and comma conversion from the sidebar', (
-    tester,
-  ) async {
+  testWidgets('toggles conversion types from the convert menu', (tester) async {
     await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
     await tester.pumpAndSettle();
 
+    // Default selection is every type.
+    await tester.enterText(find.byType(TextField).first, 'a,b "c"');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'a，b “c”',
+    );
+
+    // The menu lists every type.
+    await tester.tap(find.byKey(const Key('convertMenuButton')));
+    await tester.pumpAndSettle();
     expect(find.text('转换引号'), findsOneWidget);
     expect(find.text('转换逗号'), findsOneWidget);
+    expect(find.text('转换冒号'), findsOneWidget);
+    expect(find.text('转换感叹号'), findsOneWidget);
+    expect(find.text('转换问号'), findsOneWidget);
+    expect(find.text('转换分号'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 400));
+    await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField).first, 'a,b "c"');
+    // Turn commas off: only quotes apply to this input.
+    await _toggleConvertTool(tester, '转换逗号');
     await tester.tap(find.byKey(const Key('convertButton')));
     await tester.pump();
     expect(
@@ -52,17 +69,106 @@ void main() {
       'a,b “c”',
     );
 
-    await tester.tap(find.text('转换逗号'));
-    await tester.pumpAndSettle();
+    // Turn quotes off too: no selected type applies to this input.
+    await _toggleConvertTool(tester, '转换引号');
     await tester.tap(find.byKey(const Key('convertButton')));
     await tester.pump();
     expect(
       tester.widget<TextField>(find.byType(TextField).last).controller?.text,
-      'a，b "c"',
+      'a,b "c"',
+    );
+
+    // Turn off the remaining types: the convert button is disabled.
+    await _toggleConvertTool(tester, '转换冒号');
+    await _toggleConvertTool(tester, '转换感叹号');
+    await _toggleConvertTool(tester, '转换问号');
+    await _toggleConvertTool(tester, '转换分号');
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('convertButton')))
+          .onPressed,
+      isNull,
+    );
+
+    // Select several types and apply them all at once.
+    await _toggleConvertTool(tester, '转换逗号');
+    await _toggleConvertTool(tester, '转换冒号');
+    await _toggleConvertTool(tester, '转换感叹号');
+    await _toggleConvertTool(tester, '转换问号');
+    await _toggleConvertTool(tester, '转换分号');
+    await tester.enterText(find.byType(TextField).first, 'a,b: c!?;');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller?.text,
+      'a，b： c！？；',
     );
   });
 
-  testWidgets('uses bottom navigation for tools on narrow screens', (
+  testWidgets('rotates the convert menu arrow when the menu opens', (
+    tester,
+  ) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    AnimatedRotation arrow() => tester.widget<AnimatedRotation>(
+      find.byKey(const Key('convertMenuArrow')),
+    );
+    expect(arrow().turns, 0);
+
+    await tester.tap(find.byKey(const Key('convertMenuButton')));
+    await tester.pump();
+    expect(arrow().turns, 0.25);
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(const Offset(10, 400));
+    await tester.pumpAndSettle();
+    expect(arrow().turns, 0);
+  });
+
+  testWidgets('shows the number of converted symbols after converting', (
+    tester,
+  ) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('convertedSymbolCount')), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, '"a" b, c');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(find.text('转换了 3 个符号'), findsOneWidget);
+
+    await _toggleConvertTool(tester, '转换引号');
+    await _toggleConvertTool(tester, '转换逗号');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(find.text('转换了 0 个符号'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, '没有符号');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(find.text('转换了 0 个符号'), findsOneWidget);
+  });
+
+  testWidgets('shows per-type converted counts in a dropdown', (tester) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '"q",c:e!');
+    await tester.tap(find.byKey(const Key('convertButton')));
+    await tester.pump();
+    expect(find.text('转换了 5 个符号'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('convertedSymbolCount')));
+    await tester.pumpAndSettle();
+    expect(find.text('转换引号：2 个'), findsOneWidget);
+    expect(find.text('转换逗号：1 个'), findsOneWidget);
+    expect(find.text('转换冒号：1 个'), findsOneWidget);
+    expect(find.text('转换感叹号：1 个'), findsOneWidget);
+  });
+
+  testWidgets('converts through the convert menu on narrow screens', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -73,17 +179,19 @@ void main() {
     await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
     await tester.pumpAndSettle();
 
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(NavigationRail), findsNothing);
-    await tester.tap(find.text('转换逗号'));
-    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField).first, 'x,y');
+    await _toggleConvertTool(tester, '转换引号');
     await tester.tap(find.byKey(const Key('convertButton')));
     await tester.pump();
     expect(
       tester.widget<TextField>(find.byType(TextField).last).controller?.text,
       'x，y',
     );
+    expect(find.text('转换了 1 个符号'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('uses simplified Chinese text editing menu labels', (
@@ -499,6 +607,17 @@ void main() {
       isNot(initialPrimary),
     );
     expect(await DraftStore().loadPalette(), AppPalette.red.name);
+  });
+
+  testWidgets('removes ink splash effects globally', (tester) async {
+    await tester.pumpWidget(QuoteConverterApp(historyStore: historyStore));
+    await tester.pumpAndSettle();
+
+    final scaffoldContext = tester.element(find.byType(Scaffold).first);
+    final theme = Theme.of(scaffoldContext);
+    expect(theme.splashFactory, NoSplash.splashFactory);
+    expect(theme.splashColor, Colors.transparent);
+    expect(theme.highlightColor, Colors.transparent);
   });
 
   testWidgets('uses the bundled Source Han Sans font', (tester) async {
@@ -1528,6 +1647,15 @@ Iterable<Color> _colorSchemeColors(ColorScheme scheme) => [
   scheme.onInverseSurface,
   scheme.inversePrimary,
 ];
+
+Future<void> _toggleConvertTool(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const Key('convertMenuButton')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+  await tester.tapAt(const Offset(10, 400));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _tapBackButton(WidgetTester tester) async {
   final localizations = MaterialLocalizations.of(

@@ -216,6 +216,9 @@ ThemeData _buildAppTheme(Brightness brightness, AppPalette palette) {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: scaffoldColor,
     fontFamily: 'SourceHanSansSC',
+    splashFactory: NoSplash.splashFactory,
+    splashColor: Colors.transparent,
+    highlightColor: Colors.transparent,
     appBarTheme: AppBarTheme(
       centerTitle: false,
       elevation: 0,
@@ -290,7 +293,8 @@ class _ConverterPageState extends State<ConverterPage> {
   bool _excludeMarkdownCode = true;
   bool _useHeuristics = true;
   bool _keyboardShortcutsEnabled = true;
-  ConverterTool _activeTool = ConverterTool.quote;
+  final Set<ConverterTool> _activeTools = {...ConverterTool.values};
+  Map<ConverterTool, int>? _convertedCounts;
   List<ConversionHistoryEntry> _history = [];
 
   @override
@@ -349,6 +353,7 @@ class _ConverterPageState extends State<ConverterPage> {
       _outputController.text = draft.output;
       _excludeMarkdownCode = draft.excludeMarkdownCode;
       _useHeuristics = draft.useHeuristics;
+      _convertedCounts = _countConvertedByTool(draft.input, draft.output);
     }
     if (keyboardShortcutsEnabled != null) {
       _keyboardShortcutsEnabled = keyboardShortcutsEnabled;
@@ -421,12 +426,17 @@ class _ConverterPageState extends State<ConverterPage> {
   }
 
   Future<void> _convert() async {
-    final result = TextConverter.convert(
-      _activeTool,
-      _inputController.text,
-      excludeMarkdownCode: _excludeMarkdownCode,
-      useHeuristics: _useHeuristics,
-    );
+    var result = _inputController.text;
+    for (final tool in ConverterTool.values) {
+      if (!_activeTools.contains(tool)) continue;
+      result = TextConverter.convert(
+        tool,
+        result,
+        excludeMarkdownCode: _excludeMarkdownCode,
+        useHeuristics: _useHeuristics,
+      );
+    }
+    _convertedCounts = _countConvertedByTool(_inputController.text, result);
     _outputController.value = TextEditingValue(
       text: result,
       selection: TextSelection.collapsed(offset: result.length),
@@ -470,6 +480,7 @@ class _ConverterPageState extends State<ConverterPage> {
   }
 
   void _clear() {
+    _convertedCounts = null;
     _inputController.clear();
     _outputController.clear();
     _inputFocusNode.requestFocus();
@@ -538,6 +549,7 @@ class _ConverterPageState extends State<ConverterPage> {
       if (confirmed != true || !mounted) return false;
     }
 
+    _convertedCounts = _countConvertedByTool(entry.input, entry.output);
     _inputController.value = TextEditingValue(
       text: entry.input,
       selection: TextSelection.collapsed(offset: entry.input.length),
@@ -750,6 +762,10 @@ class _ConverterPageState extends State<ConverterPage> {
       setState(() {
         _inputController.text = nextBehaviorDraft.input;
         _outputController.text = nextBehaviorDraft.output;
+        _convertedCounts = _countConvertedByTool(
+          nextBehaviorDraft.input,
+          nextBehaviorDraft.output,
+        );
         _excludeMarkdownCode = nextBehaviorDraft.excludeMarkdownCode;
         _useHeuristics = nextBehaviorDraft.useHeuristics;
         _keyboardShortcutsEnabled = nextKeyboardShortcutsEnabled;
@@ -854,53 +870,17 @@ class _ConverterPageState extends State<ConverterPage> {
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     ),
                   )
-                : Row(
-                    children: [
-                      if (!isCompact) ...[
-                        NavigationRail(
-                          selectedIndex: _activeTool.index,
-                          onDestinationSelected: _selectTool,
-                          labelType: NavigationRailLabelType.all,
-                          destinations: [
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.format_quote_rounded),
-                              label: Text(l10n.toolQuote),
-                            ),
-                            NavigationRailDestination(
-                              icon: const Icon(Icons.notes_rounded),
-                              label: Text(l10n.toolComma),
-                            ),
-                          ],
-                        ),
-                        const VerticalDivider(width: 1),
-                      ],
-                      Expanded(child: _buildWorkspace(isCompact)),
-                    ],
-                  ),
+                : _buildWorkspace(isCompact),
           ),
-          bottomNavigationBar: isCompact && !_isRestoringDraft
-              ? NavigationBar(
-                  selectedIndex: _activeTool.index,
-                  onDestinationSelected: _selectTool,
-                  destinations: [
-                    NavigationDestination(
-                      icon: const Icon(Icons.format_quote_rounded),
-                      label: l10n.toolQuote,
-                    ),
-                    NavigationDestination(
-                      icon: const Icon(Icons.notes_rounded),
-                      label: l10n.toolComma,
-                    ),
-                  ],
-                )
-              : null,
         ),
       ),
     );
   }
 
-  void _selectTool(int index) {
-    setState(() => _activeTool = ConverterTool.values[index]);
+  void _toggleActiveTool(ConverterTool tool) {
+    setState(() {
+      if (!_activeTools.remove(tool)) _activeTools.add(tool);
+    });
   }
 
   Widget _buildWorkspace(bool isCompact) {
@@ -940,7 +920,9 @@ class _ConverterPageState extends State<ConverterPage> {
         onClear: _inputController.text.isEmpty && _outputController.text.isEmpty
             ? null
             : _confirmClear,
-        onConvert: _convert,
+        onConvert: _activeTools.isEmpty ? null : _convert,
+        activeTools: _activeTools,
+        onToolToggled: _toggleActiveTool,
       ),
     );
   }
@@ -955,6 +937,9 @@ class _ConverterPageState extends State<ConverterPage> {
       titleActions: _CopyAction(
         onCopy: _outputController.text.isEmpty ? null : _copyResult,
       ),
+      status: _convertedCounts == null || _outputController.text.isEmpty
+          ? null
+          : _ConvertedCountMenu(counts: _convertedCounts!),
     );
   }
 }
@@ -1545,6 +1530,33 @@ String _formatFileSize(int bytes) {
   return '${(megabytes / 1024).toStringAsFixed(1)} GB';
 }
 
+/// Attributes each changed character to the converter whose mapping produced
+/// it. The converters act on distinct characters, so the attribution is
+/// unambiguous.
+ConverterTool? _toolForConvertedCharacter(String source, String target) {
+  if ((source == '"' && (target == '“' || target == '”')) ||
+      (source == "'" && (target == '‘' || target == '’'))) {
+    return ConverterTool.quote;
+  }
+  if (source == ',' && target == '，') return ConverterTool.comma;
+  if (source == ':' && target == '：') return ConverterTool.colon;
+  if (source == '!' && target == '！') return ConverterTool.exclamation;
+  if (source == '?' && target == '？') return ConverterTool.question;
+  if (source == ';' && target == '；') return ConverterTool.semicolon;
+  return null;
+}
+
+Map<ConverterTool, int> _countConvertedByTool(String input, String output) {
+  final counts = {for (final tool in ConverterTool.values) tool: 0};
+  final length = input.length < output.length ? input.length : output.length;
+  for (var index = 0; index < length; index++) {
+    if (input[index] == output[index]) continue;
+    final tool = _toolForConvertedCharacter(input[index], output[index]);
+    if (tool != null) counts[tool] = counts[tool]! + 1;
+  }
+  return counts;
+}
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
@@ -1813,6 +1825,18 @@ String _paletteLabel(BuildContext context, AppPalette palette) {
     AppPalette.blue => l10n.paletteBlue,
     AppPalette.purple => l10n.palettePurple,
     AppPalette.gray => l10n.paletteGray,
+  };
+}
+
+String _toolLabel(BuildContext context, ConverterTool tool) {
+  final l10n = context.l10n;
+  return switch (tool) {
+    ConverterTool.quote => l10n.toolQuote,
+    ConverterTool.comma => l10n.toolComma,
+    ConverterTool.colon => l10n.toolColon,
+    ConverterTool.exclamation => l10n.toolExclamation,
+    ConverterTool.question => l10n.toolQuestion,
+    ConverterTool.semicolon => l10n.toolSemicolon,
   };
 }
 
@@ -2986,11 +3010,108 @@ class _SettingsSectionTitle extends StatelessWidget {
   }
 }
 
-class _EditorActions extends StatelessWidget {
-  const _EditorActions({required this.onClear, required this.onConvert});
+const _transparentMenuStyle = MenuStyle(
+  backgroundColor: WidgetStatePropertyAll(Colors.transparent),
+  surfaceTintColor: WidgetStatePropertyAll(Colors.transparent),
+  shadowColor: WidgetStatePropertyAll(Colors.transparent),
+  elevation: WidgetStatePropertyAll(0),
+  padding: WidgetStatePropertyAll(EdgeInsets.zero),
+  shape: WidgetStatePropertyAll(RoundedRectangleBorder()),
+);
+
+class _AnimatedMenuPanel extends StatelessWidget {
+  const _AnimatedMenuPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 170),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.scale(
+            scale: 0.94 + 0.06 * value,
+            alignment: Alignment.topLeft,
+            child: Transform.translate(
+              offset: Offset(0, (1 - value) * -6),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHigh,
+        elevation: 8,
+        shadowColor: Colors.black54,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicWidth(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 160),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StaggeredMenuItem extends StatelessWidget {
+  const _StaggeredMenuItem({required this.index, required this.child});
+
+  final int index;
+  final Widget child;
+
+  static const _itemDurationMs = 140;
+  static const _staggerMs = 20;
+
+  @override
+  Widget build(BuildContext context) {
+    final delayMs = _staggerMs * index;
+    final totalMs = _itemDurationMs + delayMs;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: totalMs),
+      builder: (context, value, child) {
+        final linear = ((value * totalMs - delayMs) / _itemDurationMs).clamp(
+          0.0,
+          1.0,
+        );
+        final progress = Curves.easeOutCubic.transform(linear);
+        return Transform.translate(
+          offset: Offset(0, (1 - progress) * 6),
+          child: child,
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+class _EditorActions extends StatefulWidget {
+  const _EditorActions({
+    required this.onClear,
+    required this.onConvert,
+    required this.activeTools,
+    required this.onToolToggled,
+  });
 
   final VoidCallback? onClear;
-  final VoidCallback onConvert;
+  final VoidCallback? onConvert;
+  final Set<ConverterTool> activeTools;
+  final ValueChanged<ConverterTool> onToolToggled;
+
+  @override
+  State<_EditorActions> createState() => _EditorActionsState();
+}
+
+class _EditorActionsState extends State<_EditorActions> {
+  bool _menuOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -2998,12 +3119,24 @@ class _EditorActions extends StatelessWidget {
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(6),
     );
+    final leadingShape = RoundedRectangleBorder(
+      borderRadius: const BorderRadius.horizontal(
+        left: Radius.circular(6),
+        right: Radius.zero,
+      ),
+    );
+    final trailingShape = RoundedRectangleBorder(
+      borderRadius: const BorderRadius.horizontal(
+        left: Radius.zero,
+        right: Radius.circular(6),
+      ),
+    );
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         FilledButton.icon(
           key: const Key('clearButton'),
-          onPressed: onClear,
+          onPressed: widget.onClear,
           style: FilledButton.styleFrom(
             minimumSize: const Size(0, 30),
             padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -3024,21 +3157,158 @@ class _EditorActions extends StatelessWidget {
           label: Text(l10n.clear, maxLines: 1),
         ),
         const SizedBox(width: 6),
-        FilledButton.icon(
-          key: const Key('convertButton'),
-          onPressed: onConvert,
-          style: FilledButton.styleFrom(
+        MenuAnchor(
+          animated: false,
+          clipBehavior: Clip.none,
+          style: _transparentMenuStyle,
+          onOpen: () => setState(() => _menuOpen = true),
+          onClose: () => setState(() => _menuOpen = false),
+          menuChildren: [
+            _AnimatedMenuPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, tool) in ConverterTool.values.indexed)
+                    _StaggeredMenuItem(
+                      index: index,
+                      child: MenuItemButton(
+                        key: Key('convertTool_${tool.name}'),
+                        closeOnActivate: false,
+                        onPressed: () => widget.onToolToggled(tool),
+                        leadingIcon: widget.activeTools.contains(tool)
+                            ? const Icon(Icons.check_rounded, size: 18)
+                            : const SizedBox(width: 18),
+                        child: Text(_toolLabel(context, tool)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          builder: (context, controller, child) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton.icon(
+                  key: const Key('convertButton'),
+                  onPressed: widget.onConvert,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.only(left: 9, right: 6),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(fontSize: 13),
+                    shape: leadingShape,
+                  ),
+                  icon: const Icon(Icons.sync_alt_rounded, size: 16),
+                  label: Text(l10n.convert, maxLines: 1),
+                ),
+                Tooltip(
+                  message: l10n.conversionType,
+                  child: FilledButton(
+                    key: const Key('convertMenuButton'),
+                    onPressed: () => controller.isOpen
+                        ? controller.close()
+                        : controller.open(),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(24, 30),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      shape: trailingShape,
+                    ),
+                    child: AnimatedRotation(
+                      key: const Key('convertMenuArrow'),
+                      turns: _menuOpen ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      child: const Icon(Icons.chevron_right_rounded, size: 20),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ConvertedCountMenu extends StatelessWidget {
+  const _ConvertedCountMenu({required this.counts});
+
+  final Map<ConverterTool, int> counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final total = counts.values.fold<int>(0, (sum, value) => sum + value);
+    final entries = [
+      for (final tool in ConverterTool.values)
+        if ((counts[tool] ?? 0) > 0) tool,
+    ];
+    return MenuAnchor(
+      animated: false,
+      clipBehavior: Clip.none,
+      style: _transparentMenuStyle,
+      menuChildren: [
+        _AnimatedMenuPanel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, tool) in entries.indexed)
+                _StaggeredMenuItem(
+                  index: index,
+                  child: MenuItemButton(
+                    key: Key('convertedCount_${tool.name}'),
+                    onPressed: () {},
+                    child: Text(
+                      l10n.toolConvertedCount(
+                        _toolLabel(context, tool),
+                        counts[tool]!,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+      builder: (context, controller, child) {
+        return TextButton(
+          key: const Key('convertedSymbolCount'),
+          onPressed: entries.isEmpty
+              ? null
+              : () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+          style: TextButton.styleFrom(
             minimumSize: const Size(0, 30),
-            padding: const EdgeInsets.symmetric(horizontal: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.compact,
             textStyle: const TextStyle(fontSize: 13),
-            shape: buttonShape,
+            foregroundColor: theme.colorScheme.onSurfaceVariant,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
           ),
-          icon: const Icon(Icons.sync_alt_rounded, size: 16),
-          label: Text(l10n.convert, maxLines: 1),
-        ),
-      ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.convertedSymbolCount(total),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const Icon(Icons.arrow_drop_down_rounded, size: 18),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -3077,6 +3347,7 @@ class _EditorPane extends StatelessWidget {
     this.focusNode,
     this.readOnly = false,
     this.titleActions,
+    this.status,
   });
 
   final String title;
@@ -3086,6 +3357,7 @@ class _EditorPane extends StatelessWidget {
   final FocusNode? focusNode;
   final bool readOnly;
   final Widget? titleActions;
+  final Widget? status;
 
   @override
   Widget build(BuildContext context) {
@@ -3115,6 +3387,7 @@ class _EditorPane extends StatelessWidget {
                     const SizedBox(width: 8),
                     titleActions!,
                   ],
+                  if (status != null) ...[const SizedBox(width: 8), status!],
                   const Spacer(),
                   if (showCharacterCount)
                     Text(

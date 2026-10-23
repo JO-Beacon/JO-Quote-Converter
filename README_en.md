@@ -4,7 +4,7 @@
 
 > The repository name remains `JO-Quote-Converter`; the app name, Dart package name, Windows executable, and Android application identifier have all been renamed to match “JO Symbol Converter”.
 
-JO-Quote-Converter is a local Flutter text tool that converts English straight quotes into Chinese curly quotes and English half-width commas into the Chinese full-width comma. It targets Windows and Android. Text processing and draft saving happen locally on the device; only manual update checks access GitHub Releases.
+JO-Quote-Converter is a local Flutter text tool that converts English straight quotes into Chinese curly quotes and English half-width commas, colons, exclamation marks, question marks, and semicolons into their Chinese full-width counterparts. It targets Windows and Android. Text processing and draft saving happen locally on the device; only manual update checks access GitHub Releases.
 
 Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 
@@ -16,9 +16,16 @@ Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 - Optional mechanical pairing mode: with heuristics off, single and double quotes are paired strictly in left, right, left, right order
 - Avoids re-converting Chinese curly quotes that are already present
 - Converts English half-width commas `,` into the Chinese full-width comma `，`
+- Converts English half-width colons `:` into the Chinese full-width colon `：`
+- Converts English half-width exclamation marks `!` into the Chinese full-width exclamation mark `！`
+- Optional heuristic detection that keeps operators such as `!=` and `!==` when converting exclamation marks
+- Converts English half-width question marks `?` into the Chinese full-width question mark `？` (no heuristic exceptions; `??` is converted as well)
+- Converts English half-width semicolons `;` into the Chinese full-width semicolon `；` (no heuristic exceptions)
+- Optional heuristic detection that keeps URL schemes, times, ratios, and Windows drive paths when converting colons
 - Optional heuristic detection that keeps digit group separators such as `1,000` and `12,345,678` when converting commas
 - Optional Markdown exclusion that keeps original symbols in fenced code blocks and inline code
 - Copy converted result and clear text
+- Show the total number of converted symbols next to the copy button in the result area after each conversion, with an expandable per-type breakdown
 - Follow-system, light, and dark appearance modes
 - Six color themes: red, yellow, green, blue, purple, and gray; gray is the default
 - Bundled Source Han Sans Simplified Chinese with Regular, Medium, and Bold weights
@@ -37,13 +44,13 @@ Author: GitHub [JO-Beacon](https://github.com/JO-Beacon)
 - About page supports manual checking for the latest GitHub Release and opens the release page when an update is available
 - Settings use categorized lists for language, appearance, behavior, keyboard shortcuts, data and archives, and about; UI language supports Simplified Chinese and English, defaulting to Simplified Chinese
 - Windows supports `Ctrl+Enter` to convert the current text, and keyboard shortcuts can be disabled from Shortcut Settings
-- The sidebar switches between “Quotes” and “Commas”; desktop wide screens use a left navigation rail and narrow screens automatically use bottom navigation
+- The Convert button has a multi-select dropdown menu for “Quotes”, “Commas”, “Colons”, “Exclamations”, “Question marks”, and “Semicolons”, with all types selected by default; the button applies every selected type in one tap (disabled when none is selected)
 - Desktop wide-screen workspace uses a left-right split; narrow screens automatically switch to a top-bottom layout
 
 ## Usage
 
 1. Enter or paste text into the “Source” area.
-2. Choose “Quotes” or “Commas” from the sidebar (bottom navigation on narrow screens).
+2. Use the dropdown arrow on the Convert button to check any combination of “Quotes”, “Commas”, “Colons”, “Exclamations”, “Question marks”, and “Semicolons”; then tap Convert to apply all selected types in order.
 3. Open “Settings” from the top-right corner and configure “Exclude Markdown code” and “Heuristic detection” as needed. The two options are independent.
 4. Tap “Convert” and view the result on the right or below.
 5. Tap the copy button to copy the converted result.
@@ -64,7 +71,7 @@ On Windows, when the new data directory is first used, drafts, settings, and his
 
 ## Development
 
-The project is developed with Flutter 3.44.1 and Dart 3.12.1.
+The project is developed with Flutter 3.47.6 and Dart 3.13.5.
 
 ```powershell
 flutter pub get
@@ -90,6 +97,10 @@ lib/
   text_converter.dart    Dispatches conversion based on the selected type
   quote_converter.dart   Quote conversion
   comma_converter.dart   Comma conversion
+  colon_converter.dart   Colon conversion
+  exclamation_converter.dart  Exclamation mark conversion
+  question_converter.dart  Question mark conversion
+  semicolon_converter.dart  Semicolon conversion
   markdown_code_mask.dart  Marks Markdown code regions
   draft_store.dart      Local draft storage
   history_store.dart    SQLite history storage and legacy data migration
